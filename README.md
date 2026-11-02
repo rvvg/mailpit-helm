@@ -508,7 +508,7 @@ All actions are pinned to commit SHAs and updated by Dependabot.
 - Write a failing unit test first, then change the templates.
 - Bump `version` in `Chart.yaml` and update `artifacthub.io/changes` for every change.
 
-Verify a release signature and provenance:
+Verify a release signature (cosign v3+; v2 does not read the bundle format and reports "no signatures found") and provenance:
 
 ```console
 cosign verify ghcr.io/rvvg/charts/mailpit:<version> \
