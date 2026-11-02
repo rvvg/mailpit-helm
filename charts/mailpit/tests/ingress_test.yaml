@@ -1,0 +1,32 @@
+suite: ingress
+templates:
+  - templates/ingress.yaml
+  - templates/secret.yaml
+tests:
+  - it: adds oauth2-proxy annotations with group and email filters
+    template: templates/ingress.yaml
+    set:
+      ingress:
+        enabled: true
+        annotations: {a: b}
+        oauth2Proxy:
+          enabled: true
+          url: https://sso.example.com/
+          allowedGroups: [g1, g2]
+          allowedEmails: [e@example.com]
+    asserts:
+      - equal:
+          path: metadata.annotations["nginx.ingress.kubernetes.io/auth-url"]
+          value: https://sso.example.com/oauth2/auth?allowed_groups=g1,g2&allowed_emails=e@example.com
+      - equal:
+          path: metadata.annotations["nginx.ingress.kubernetes.io/auth-signin"]
+          value: https://sso.example.com/oauth2/start?rd=$scheme://$host$escaped_request_uri
+      - equal: {path: "metadata.annotations.a", value: b}
+
+  - it: rejects a plain-http oauth2-proxy url
+    set:
+      ingress: {enabled: true, oauth2Proxy: {enabled: true, url: http://sso.example.com}}
+    template: templates/secret.yaml
+    asserts:
+      - failedTemplate:
+          errorMessage: ingress.oauth2Proxy.url must start with https://

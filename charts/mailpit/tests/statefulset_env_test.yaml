@@ -1,0 +1,119 @@
+suite: statefulset environment (existing behaviour)
+templates:
+  - templates/statefulset.yaml
+  - templates/secret.yaml
+release:
+  name: mp
+  namespace: mail
+tests:
+  - it: renders the hardened defaults
+    template: templates/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: MP_DATABASE, value: /data/mailpit.db}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: MP_MAX_MESSAGES, value: "500"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: MP_DISABLE_VERSION_CHECK, value: "true"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: MP_SMTP_DISABLE_RDNS, value: "true"}
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: {name: MP_SMTP_AUTH_ACCEPT_ANY, value: "true"}
+          any: true
+      - notExists:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.httpHeaders
+
+  - it: maps retention settings
+    template: templates/statefulset.yaml
+    set:
+      mailpit.maxAge: 14d
+      mailpit.maxMessages: 0
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: MP_MAX_AGE, value: 14d}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: MP_MAX_MESSAGES, value: "0"}
+
+  - it: normalises the webroot and uses it for probes
+    template: templates/statefulset.yaml
+    set:
+      mailpit.webroot: mail
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: MP_WEBROOT, value: /mail/}
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /mail/readyz
+
+  - it: builds the allowed hosts list and probes with Host localhost
+    template: templates/statefulset.yaml
+    set:
+      mailpit.ui.allowedHosts: [a.example.com]
+      ingress.enabled: true
+      ingress.hosts: [{host: b.example.com}]
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: MP_ALLOWED_HOSTS
+            value: a.example.com,mp-mailpit,mp-mailpit.mail,mp-mailpit.mail.svc,mp-mailpit.mail.svc.cluster.local,localhost,127.0.0.1,b.example.com
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.httpHeaders
+          value: [{name: Host, value: localhost}]
+
+  - it: mounts basic auth files from the chart secret or an existing secret
+    template: templates/statefulset.yaml
+    set:
+      mailpit.ui.auth: {enabled: true, htpasswd: "u:h"}
+      mailpit.smtp.auth: {enabled: true, existingSecret: ext, existingSecretKey: k}
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: MP_UI_AUTH_FILE, value: /secrets/ui.htpasswd}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: MP_SMTP_AUTH_FILE, value: /secrets/smtp.htpasswd}
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: auth
+            projected:
+              defaultMode: 288
+              sources:
+                - secret: {name: ext, items: [{key: k, path: smtp.htpasswd}]}
+                - secret: {name: mp-mailpit-auth, items: [{key: ui.htpasswd, path: ui.htpasswd}]}
+
+  - it: uses a self-signed SMTP certificate without mounting a secret
+    template: templates/statefulset.yaml
+    set:
+      mailpit.smtp.tls: {enabled: true, selfSigned: true}
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: MP_SMTP_TLS_CERT
+            value: sans:mp-mailpit,mp-mailpit.mail,mp-mailpit.mail.svc,mp-mailpit.mail.svc.cluster.local
+      - notContains:
+          path: spec.template.spec.volumes
+          content: {name: smtp-tls}
+          any: true
+
+  - it: exposes metrics on a dedicated port
+    template: templates/statefulset.yaml
+    set:
+      mailpit.metrics.enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: MP_ENABLE_PROMETHEUS, value: "0.0.0.0:9090"}
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content: {name: metrics, containerPort: 9090, protocol: TCP}

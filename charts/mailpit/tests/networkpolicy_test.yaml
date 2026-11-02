@@ -1,0 +1,33 @@
+suite: network policy
+templates:
+  - templates/networkpolicy.yaml
+tests:
+  - it: is not rendered by default
+    asserts:
+      - hasDocuments: {count: 0}
+
+  - it: allows the namespace on http and smtp and only DNS egress
+    set:
+      networkPolicy.enabled: true
+    asserts:
+      - equal: {path: "spec.policyTypes", value: [Ingress, Egress]}
+      - equal:
+          path: spec.ingress
+          value:
+            - ports: [{port: http, protocol: TCP}]
+              from: [{podSelector: {}}]
+            - ports: [{port: smtp, protocol: TCP}]
+              from: [{podSelector: {}}]
+      - lengthEqual: {path: "spec.egress", count: 1}
+      - equal: {path: "spec.egress[0].ports[0].port", value: 53}
+
+  - it: opens metrics only to listed peers
+    set:
+      networkPolicy: {enabled: true, allowSameNamespace: false, metricsFrom: [{namespaceSelector: {}}]}
+      mailpit.metrics.enabled: true
+    asserts:
+      - equal:
+          path: spec.ingress
+          value:
+            - ports: [{port: metrics, protocol: TCP}]
+              from: [{namespaceSelector: {}}]

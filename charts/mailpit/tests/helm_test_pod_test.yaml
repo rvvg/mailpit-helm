@@ -1,0 +1,15 @@
+suite: helm test pod
+templates:
+  - templates/tests/test-connection.yaml
+  - templates/secret.yaml
+tests:
+  - it: does not carry selector labels (not a Service endpoint, not under the NetworkPolicy)
+    template: templates/tests/test-connection.yaml
+    asserts:
+      - notExists:
+          path: metadata.labels["app.kubernetes.io/name"]
+      - notExists:
+          path: metadata.labels["app.kubernetes.io/instance"]
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: test

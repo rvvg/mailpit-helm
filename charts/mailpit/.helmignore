@@ -9,3 +9,4 @@
 *.orig
 *~
 ci/
+tests/*_test.yaml

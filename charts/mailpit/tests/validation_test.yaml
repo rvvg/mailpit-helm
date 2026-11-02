@@ -1,0 +1,22 @@
+suite: fail-fast validation
+templates:
+  - templates/secret.yaml
+tests:
+  - it: rejects send API auth file together with accept-any
+    set:
+      mailpit.sendApi.auth: {enabled: true, htpasswd: "u:h", acceptAny: true}
+    asserts:
+      - failedTemplate:
+          errorMessage: mailpit.sendApi.auth.enabled and mailpit.sendApi.auth.acceptAny are mutually exclusive
+  - it: rejects required TLS without TLS
+    set:
+      mailpit.smtp.tls.requireTLS: true
+    asserts:
+      - failedTemplate:
+          errorMessage: mailpit.smtp.tls.requireTLS/requireStartTLS need mailpit.smtp.tls.enabled
+  - it: rejects TLS without a certificate source
+    set:
+      mailpit.smtp.tls.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: mailpit.smtp.tls.enabled needs one of secretName, certManager.enabled or selfSigned
