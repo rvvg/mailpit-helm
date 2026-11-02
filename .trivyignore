@@ -1,0 +1,14 @@
+# Accepted Trivy misconfiguration findings for the rendered chart.
+# Every entry needs a reason; review when Trivy or the chart changes.
+
+# KSV-0011 CPU limit: intentionally unset. CPU limits cause CFS throttling of
+# SMTP/HTTP handling; a CPU request is set and users can add a limit via `resources`.
+AVD-KSV-0011
+
+# KSV-0125 untrusted registry: docker.io/axllent/mailpit is the official upstream
+# image. Mirror it and override `image.registry` if your policy requires it.
+AVD-KSV-0125
+
+# KSV-0110 default namespace: artifact of rendering without a namespace; all
+# resources are installed into the Helm release namespace.
+AVD-KSV-0110

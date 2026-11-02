@@ -1,0 +1,12 @@
+# yamllint rules used by `ct lint` for Chart.yaml and values files
+extends: default
+rules:
+  line-length: disable
+  document-start: disable
+  truthy:
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  indentation:
+    spaces: consistent
+    indent-sequences: whatever

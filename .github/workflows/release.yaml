@@ -5,58 +5,140 @@ on:
     branches: [main]
     paths:
       - charts/**
+      - artifacthub-repo.yml
+  workflow_dispatch:
 
 permissions:
-  contents: write   # GitHub release + gh-pages index
-  packages: write   # ghcr.io OCI push
-  id-token: write   # cosign keyless signing
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  HELM_VERSION: v3.22.1
+  ORAS_VERSION: 1.3.4
+  CHART_DIR: charts/mailpit
 
 jobs:
   release:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write       # GitHub release
+      packages: write       # push to ghcr.io
+      id-token: write       # cosign keyless signing + provenance
+      attestations: write   # build provenance
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Configure git
-        run: |
-          git config user.name "$GITHUB_ACTOR"
-          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
-
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: v3.17.3
+          version: ${{ env.HELM_VERSION }}
 
-      - name: Publish to GitHub Releases and GitHub Pages
-        uses: helm/chart-releaser-action@v1.7.0
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2.0.2
         with:
-          skip_existing: true
+          version: ${{ env.ORAS_VERSION }}
+
+      - name: Resolve chart coordinates
+        id: chart
         env:
-          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CR_GENERATE_RELEASE_NOTES: true
-
-      - name: Publish artifacthub-repo.yml to GitHub Pages
+          OWNER: ${{ github.repository_owner }}
         run: |
-          git fetch origin gh-pages
-          git worktree add /tmp/gh-pages gh-pages
-          cp artifacthub-repo.yml /tmp/gh-pages/artifacthub-repo.yml
-          cd /tmp/gh-pages
-          git add artifacthub-repo.yml
-          git diff --cached --quiet || { git commit -m "Update artifacthub-repo.yml" && git push origin gh-pages; }
+          name=$(yq .name "$CHART_DIR/Chart.yaml")
+          version=$(yq .version "$CHART_DIR/Chart.yaml")
+          registry="ghcr.io/${OWNER,,}/charts"
+          {
+            echo "name=$name"
+            echo "version=$version"
+            echo "registry=$registry"
+            echo "ref=$registry/$name"
+          } >> "$GITHUB_OUTPUT"
 
-      - uses: sigstore/cosign-installer@v3.8.1
-
-      - name: Push to ghcr.io and sign
+      - name: Log in to ghcr.io
         env:
-          REGISTRY: ghcr.io/${{ github.repository_owner }}/charts
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
-          for pkg in .cr-release-packages/*.tgz; do
-            [ -e "$pkg" ] || continue
-            out=$(helm push "$pkg" "oci://$REGISTRY" 2>&1) || { echo "$out"; exit 1; }
-            echo "$out"
-            digest=$(echo "$out" | awk '/^Digest:/ {print $2}')
-            name=$(basename "$pkg" | sed -E 's/-[0-9]+\.[0-9]+\.[0-9]+.*\.tgz$//')
-            cosign sign --yes "$REGISTRY/$name@$digest"
-          done
+          echo "$GH_TOKEN" | helm registry login ghcr.io -u "$ACTOR" --password-stdin
+          echo "$GH_TOKEN" | oras login ghcr.io -u "$ACTOR" --password-stdin
+
+      - name: Skip if this version is already published
+        id: exists
+        env:
+          REF: ${{ steps.chart.outputs.ref }}
+          VERSION: ${{ steps.chart.outputs.version }}
+        run: |
+          if helm show chart "oci://$REF" --version "$VERSION" >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$REF:$VERSION already exists, nothing to release"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Package and push
+        if: steps.exists.outputs.published == 'false'
+        id: push
+        env:
+          REGISTRY: ${{ steps.chart.outputs.registry }}
+        run: |
+          helm package "$CHART_DIR" -d dist
+          out=$(helm push dist/*.tgz "oci://$REGISTRY" 2>&1)
+          echo "$out"
+          digest=$(echo "$out" | awk '/^Digest:/ {print $2}')
+          test -n "$digest"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Sign with cosign (keyless)
+        if: steps.exists.outputs.published == 'false'
+        env:
+          REF: ${{ steps.chart.outputs.ref }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "$REF@$DIGEST"
+
+      - name: Build provenance attestation
+        if: steps.exists.outputs.published == 'false'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.chart.outputs.ref }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Publish Artifact Hub repository metadata
+        if: steps.exists.outputs.published == 'false'
+        env:
+          REF: ${{ steps.chart.outputs.ref }}
+        run: |
+          oras push "$REF:artifacthub.io" \
+            --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
+            artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
+
+      - name: GitHub release
+        if: steps.exists.outputs.published == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NAME: ${{ steps.chart.outputs.name }}
+          VERSION: ${{ steps.chart.outputs.version }}
+          REF: ${{ steps.chart.outputs.ref }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          changes=$(yq '.annotations["artifacthub.io/changes"]' "$CHART_DIR/Chart.yaml" | yq -r '.[] | "- " + .kind + ": " + .description')
+          {
+            echo "## Install"
+            echo
+            echo '```console'
+            echo "helm install mailpit oci://$REF --version $VERSION"
+            echo '```'
+            echo
+            echo "OCI digest: \`$DIGEST\` (signed with cosign keyless, build provenance attested)"
+            echo
+            echo "## Changes"
+            echo
+            echo "$changes"
+          } > notes.md
+          gh release create "$NAME-$VERSION" dist/*.tgz \
+            --repo "$GITHUB_REPOSITORY" --title "$NAME $VERSION" --notes-file notes.md --target "$GITHUB_SHA"

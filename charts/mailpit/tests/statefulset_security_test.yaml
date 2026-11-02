@@ -14,6 +14,13 @@ tests:
       - equal: {path: "spec.template.spec.automountServiceAccountToken", value: false}
       - equal: {path: "spec.template.spec.enableServiceLinks", value: false}
 
+  - it: runs with UID/GID above 10000 so it never maps to a host user
+    template: templates/statefulset.yaml
+    asserts:
+      - equal: {path: "spec.template.spec.securityContext.runAsUser", value: 10001}
+      - equal: {path: "spec.template.spec.securityContext.runAsGroup", value: 10001}
+      - equal: {path: "spec.template.spec.securityContext.fsGroup", value: 10001}
+
   - it: runs a single replica and keeps data in emptyDir by default
     template: templates/statefulset.yaml
     asserts:

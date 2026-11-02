@@ -4,4 +4,5 @@ chart-dirs:
 target-branch: main
 validate-maintainers: false
 check-version-increment: true
+lint-conf: lintconf.yaml
 helm-extra-args: --timeout 300s

@@ -1,8 +1,10 @@
 CHART      := charts/mailpit
 KIND_NAME  ?= mailpit-test
-CALICO     ?= v3.29.3
+CALICO     ?= v3.33.0
 
-.PHONY: lint docs docs-check test test-cluster clean
+.PHONY: all lint unit docs docs-check test test-cluster clean
+
+all: docs lint unit
 
 lint:
 	helm lint $(CHART)
@@ -13,6 +15,9 @@ lint:
 			-schema-location default \
 			-schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' - || exit 1; \
 	done
+
+unit:
+	helm unittest --strict $(CHART)
 
 docs:
 	python3 hack/gen-params.py $(CHART)/values.yaml README.md
