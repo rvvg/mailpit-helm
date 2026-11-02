@@ -150,3 +150,20 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 app.kubernetes.io/part-of: {{ include "mailpit.name" . }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
+
+{{/* Render [[NAME, value], ...] as container env. Rules: nil, "" and false are
+     skipped; true becomes "true"; numbers (also 0) and strings are quoted. */}}
+{{- define "mailpit.envTable" -}}
+{{- range . }}
+{{- $v := index . 1 }}
+{{- if kindIs "bool" $v }}
+{{- if $v }}
+- name: {{ index . 0 }}
+  value: "true"
+{{- end }}
+{{- else if and (not (kindIs "invalid" $v)) (ne (toString $v) "") }}
+- name: {{ index . 0 }}
+  value: {{ $v | toString | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
