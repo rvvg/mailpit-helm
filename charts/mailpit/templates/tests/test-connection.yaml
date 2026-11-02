@@ -28,15 +28,24 @@ spec:
       env:
         - name: SVC
           value: {{ include "mailpit.fullname" . }}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
       command:
         - sh
         - -ec
         - |
           {{- $scheme := .Values.mailpit.ui.tls.enabled | ternary "https" "http" }}
-          curl -fsSk {{ $scheme }}://$SVC:{{ .Values.service.httpPort }}{{ include "mailpit.webroot" . }}readyz
+          # Retries: CNIs program NetworkPolicy for a freshly started client pod
+          # asynchronously, the first packets may be rejected.
+          curl -fsSk --retry 10 --retry-connrefused --retry-delay 2 {{ $scheme }}://$SVC:{{ .Values.service.httpPort }}{{ include "mailpit.webroot" . }}readyz
           echo "web UI ready"
           {{- if not (or .Values.mailpit.smtp.auth.enabled .Values.mailpit.smtp.tls.requireTLS .Values.mailpit.smtp.tls.requireStartTLS) }}
-          printf 'Subject: helm test\r\n\r\nhello from helm test\r\n' | \
-            curl -fsS smtp://$SVC:{{ .Values.service.smtpPort }} --mail-from test@example.com --mail-rcpt test@example.com -T -
+          printf 'Subject: helm test\r\n\r\nhello from helm test\r\n' > /tmp/message.eml
+          curl -fsS --retry 10 --retry-connrefused --retry-delay 2 smtp://$SVC:{{ .Values.service.smtpPort }} \
+            --mail-from test@example.com --mail-rcpt test@example.com -T /tmp/message.eml
           echo "SMTP accepted the message"
           {{- end }}
+  volumes:
+    - name: tmp
+      emptyDir: {}

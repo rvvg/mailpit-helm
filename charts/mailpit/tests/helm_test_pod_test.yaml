@@ -13,3 +13,12 @@ tests:
       - equal:
           path: metadata.annotations["helm.sh/hook"]
           value: test
+  - it: retries connections so CNI NetworkPolicy programming lag for the new pod does not fail the test
+    template: templates/tests/test-connection.yaml
+    asserts:
+      - matchRegex:
+          path: spec.containers[0].command[2]
+          pattern: curl -fsSk --retry 10 --retry-connrefused --retry-delay 2 .*readyz
+      - matchRegex:
+          path: spec.containers[0].command[2]
+          pattern: curl -fsS --retry 10 --retry-connrefused --retry-delay 2 smtp://

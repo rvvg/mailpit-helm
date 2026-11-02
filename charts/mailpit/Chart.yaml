@@ -5,7 +5,7 @@ description: >-
   dependency-free chart covering every Mailpit option: restricted Pod Security,
   NetworkPolicy, oauth2-proxy SSO, SMTP/UI/POP3 TLS, relay, Prometheus, Gateway API.
 type: application
-version: 1.0.0
+version: 1.0.1
 appVersion: "v1.33.0"
 kubeVersion: ">=1.25.0-0"
 home: https://github.com/rvvg/mailpit-helm
@@ -45,21 +45,5 @@ annotations:
     - name: Chart source
       url: https://github.com/rvvg/mailpit-helm
   artifacthub.io/changes: |
-    - kind: added
-      description: Initial public release
-    - kind: added
-      description: NetworkPolicy with default-deny egress (DNS only)
-    - kind: added
-      description: oauth2-proxy external auth helper for ingress-nginx
-    - kind: added
-      description: SMTP STARTTLS/TLS with existing secret or cert-manager Certificate
-    - kind: added
-      description: Prometheus metrics on a dedicated port and ServiceMonitor
-    - kind: added
-      description: Gateway API HTTPRoute
-    - kind: added
-      description: values.schema.json validation
-    - kind: added
-      description: All Mailpit runtime options as typed values (relay, forward, POP3, tags, webhook, spam check, chaos, rqlite)
-    - kind: security
-      description: Runs as UID/GID 10001 by default
+    - kind: fixed
+      description: helm test retries connections while the CNI programs NetworkPolicy for the new test pod
