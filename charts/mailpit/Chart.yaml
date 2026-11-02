@@ -5,7 +5,7 @@ description: >-
   dependency-free chart covering every Mailpit option: restricted Pod Security,
   NetworkPolicy, oauth2-proxy SSO, SMTP/UI/POP3 TLS, relay, Prometheus, Gateway API.
 type: application
-version: 1.0.1
+version: 1.0.2
 appVersion: "v1.33.0"
 kubeVersion: ">=1.25.0-0"
 home: https://github.com/rvvg/mailpit-helm
@@ -27,7 +27,7 @@ maintainers:
     url: https://github.com/rvvg
 annotations:
   artifacthub.io/license: Apache-2.0
-  artifacthub.io/category: monitoring-logging
+  artifacthub.io/category: integration-delivery
   artifacthub.io/operator: "false"
   artifacthub.io/prerelease: "false"
   artifacthub.io/containsSecurityUpdates: "false"
@@ -45,5 +45,5 @@ annotations:
     - name: Chart source
       url: https://github.com/rvvg/mailpit-helm
   artifacthub.io/changes: |
-    - kind: fixed
-      description: helm test retries connections while the CNI programs NetworkPolicy for the new test pod
+    - kind: changed
+      description: Artifact Hub category set to integration-delivery (was monitoring-logging)
