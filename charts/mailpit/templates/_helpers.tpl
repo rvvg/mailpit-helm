@@ -135,6 +135,12 @@ httpGet:
 {{- if and $m.ui.tls.enabled (not $m.ui.tls.secretName) }}
 {{- fail "mailpit.ui.tls.enabled needs mailpit.ui.tls.secretName" }}
 {{- end }}
+{{- if and $m.spamCheck.engine (not $m.spamCheck.address) }}
+{{- fail "mailpit.spamCheck.address is required when mailpit.spamCheck.engine is set" }}
+{{- end }}
+{{- if and $m.webhook.url $m.webhook.existingSecret }}
+{{- fail "mailpit.webhook.url and mailpit.webhook.existingSecret are mutually exclusive" }}
+{{- end }}
 {{- if and $m.metrics.serviceMonitor.enabled (not $m.metrics.enabled) }}
 {{- fail "mailpit.metrics.serviceMonitor.enabled needs mailpit.metrics.enabled" }}
 {{- end }}

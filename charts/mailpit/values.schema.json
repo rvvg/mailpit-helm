@@ -148,6 +148,18 @@
             },
             "hideDeleteAllButton": {
               "type": "boolean"
+            },
+            "disableHttpCompression": {
+              "type": "boolean"
+            },
+            "allowInternalHttpRequests": {
+              "type": "boolean"
+            },
+            "disableLinkCheckRateLimit": {
+              "type": "boolean"
+            },
+            "allowUntrustedTls": {
+              "type": "boolean"
             }
           },
           "additionalProperties": false
@@ -262,6 +274,12 @@
             },
             "disableRDNS": {
               "type": "boolean"
+            },
+            "strictRfcHeaders": {
+              "type": "boolean"
+            },
+            "ignoreRejectedRecipients": {
+              "type": "boolean"
             }
           },
           "additionalProperties": false
@@ -297,6 +315,146 @@
             }
           },
           "additionalProperties": false
+        },
+        "logLevel": {
+          "type": "string",
+          "enum": [
+            "info",
+            "quiet",
+            "verbose"
+          ]
+        },
+        "compression": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 0
+            },
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            }
+          ]
+        },
+        "useMessageDates": {
+          "type": "boolean"
+        },
+        "ignoreDuplicateIds": {
+          "type": "boolean"
+        },
+        "database": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "disableWAL": {
+              "type": "boolean"
+            },
+            "disableAutoVacuum": {
+              "type": "boolean"
+            },
+            "tenantId": {
+              "type": "string"
+            }
+          }
+        },
+        "spamCheck": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "engine": {
+              "type": "string",
+              "enum": [
+                "",
+                "spamassassin",
+                "rspamd"
+              ]
+            },
+            "address": {
+              "type": "string"
+            }
+          }
+        },
+        "tags": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "filters": {
+              "type": "string"
+            },
+            "titleCase": {
+              "type": "boolean"
+            },
+            "disable": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "plus-addresses",
+                  "x-tags"
+                ]
+              },
+              "uniqueItems": true
+            },
+            "username": {
+              "type": "boolean"
+            }
+          }
+        },
+        "webhook": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "url": {
+              "type": "string",
+              "pattern": "^$|^https?://"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "existingSecretKey": {
+              "type": "string"
+            },
+            "limit": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 0
+                },
+                {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              ]
+            },
+            "delay": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 0
+                },
+                {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              ]
+            }
+          }
+        },
+        "chaos": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "triggers": {
+              "type": "string"
+            }
+          }
         }
       },
       "additionalProperties": false

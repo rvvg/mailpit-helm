@@ -50,6 +50,24 @@ mailpit:
   maxMessageSize: ""
   # -- Disable the periodic GitHub release check - no outbound calls (`MP_DISABLE_VERSION_CHECK`)
   disableVersionCheck: true
+  # -- Log verbosity: `info`, `quiet` (errors only, `MP_QUIET`) or `verbose` (debug, `MP_VERBOSE`)
+  logLevel: info
+  # -- zstd compression level of stored messages, `0`-`3`; empty = Mailpit default 1 (`MP_COMPRESSION`)
+  compression: ""
+  # -- Use the message `Date` header as the received time (`MP_USE_MESSAGE_DATES`)
+  useMessageDates: false
+  # -- Drop messages whose Message-Id is already stored (`MP_IGNORE_DUPLICATE_IDS`)
+  ignoreDuplicateIds: false
+
+  database:
+    # -- Override `MP_DATABASE`, e.g. an rqlite URL `http://rqlite:4001`. Default: SQLite file on the data volume
+    url: ""
+    # -- Disable SQLite write-ahead logging; required on NFS/SMB volumes (`MP_DISABLE_WAL`)
+    disableWAL: false
+    # -- Disable automatic VACUUM; not recommended (`MP_DISABLE_AUTO_VACUUM`)
+    disableAutoVacuum: false
+    # -- Table prefix to share one database between instances (`MP_TENANT_ID`)
+    tenantId: ""
 
   ui:
     auth:
@@ -75,6 +93,20 @@ mailpit:
     blockRemoteCssAndFonts: false
     # -- Hide the "Delete all" button in the web UI (`MP_HIDE_DELETE_ALL_BUTTON`)
     hideDeleteAllButton: false
+    # -- Disable gzip compression of web UI/API responses (`MP_DISABLE_HTTP_COMPRESSION`)
+    disableHttpCompression: false
+    # -- Let link check, HTML check and screenshots reach internal IPs; SSRF risk (`MP_ALLOW_INTERNAL_HTTP_REQUESTS`)
+    allowInternalHttpRequests: false
+    # -- Disable the link check rate limit (`MP_DISABLE_LINK_CHECK_RATE_LIMIT`)
+    disableLinkCheckRateLimit: false
+    # -- Skip TLS verification for link check and screenshots (`MP_ALLOW_UNTRUSTED_TLS`)
+    allowUntrustedTls: false
+
+  spamCheck:
+    # -- Spam scoring engine: `""` (off), `spamassassin` (`MP_ENABLE_SPAMASSASSIN`) or `rspamd` (`MP_ENABLE_RSPAMD`)
+    engine: ""
+    # -- SpamAssassin `host:port` or rspamd URL/`host:port` (optionally with password)
+    address: ""
 
   sendApi:
     auth:
@@ -131,6 +163,38 @@ mailpit:
     maxRecipients: ""
     # -- Disable reverse DNS lookups of SMTP clients - useless for pod IPs (`MP_SMTP_DISABLE_RDNS`)
     disableRDNS: true
+    # -- Reject messages with bare `\n` line endings instead of fixing them (`MP_SMTP_STRICT_RFC_HEADERS`)
+    strictRfcHeaders: false
+    # -- Answer 250 OK to rejected recipients but drop their copy (`MP_SMTP_IGNORE_REJECTED_RECIPIENTS`)
+    ignoreRejectedRecipients: false
+
+  tags:
+    # -- Auto-tag rules `tag=search` separated by spaces (`MP_TAG`)
+    filters: ""
+    # -- Convert new tags to TitleCase (`MP_TAGS_TITLE_CASE`)
+    titleCase: false
+    # -- Built-in tagging to disable: `plus-addresses`, `x-tags` (`MP_TAGS_DISABLE`)
+    disable: []
+    # -- Tag messages with the authenticated SMTP/HTTP username (`MP_TAGS_USERNAME`)
+    username: false
+
+  webhook:
+    # -- URL called for every new message (`MP_WEBHOOK_URL`). Prefer `existingSecret` when it carries a token
+    url: ""
+    # -- Secret holding the webhook URL
+    existingSecret: ""
+    # -- Key of the webhook URL in `existingSecret`
+    existingSecretKey: url
+    # -- Max webhook requests per second; empty = Mailpit default 1 (`MP_WEBHOOK_LIMIT`)
+    limit: ""
+    # -- Delay in seconds before calling the webhook (`MP_WEBHOOK_DELAY`)
+    delay: ""
+
+  chaos:
+    # -- Enable chaos testing in the API and web UI (`MP_ENABLE_CHAOS`)
+    enabled: false
+    # -- Startup chaos triggers, e.g. `Sender:451:50` (`MP_CHAOS_TRIGGERS`)
+    triggers: ""
 
   metrics:
     # -- Expose Prometheus metrics on a dedicated port (`MP_ENABLE_PROMETHEUS`), not reachable via ingress

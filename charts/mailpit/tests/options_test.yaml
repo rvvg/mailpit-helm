@@ -1,0 +1,122 @@
+suite: Mailpit runtime options
+templates:
+  - templates/statefulset.yaml
+  - templates/secret.yaml
+release:
+  name: mp
+tests:
+  - it: maps database and storage options
+    template: templates/statefulset.yaml
+    set:
+      mailpit.database: {url: "http://rqlite:4001", disableWAL: true, disableAutoVacuum: true, tenantId: team-a}
+      mailpit.compression: 3
+      mailpit.useMessageDates: true
+      mailpit.ignoreDuplicateIds: true
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_DATABASE, value: "http://rqlite:4001"}}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_DISABLE_WAL, value: "true"}}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_DISABLE_AUTO_VACUUM, value: "true"}}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_TENANT_ID, value: team-a}}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_COMPRESSION, value: "3"}}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_USE_MESSAGE_DATES, value: "true"}}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_IGNORE_DUPLICATE_IDS, value: "true"}}
+
+  - it: keeps compression 0 (a valid level, not "unset")
+    template: templates/statefulset.yaml
+    set:
+      mailpit.compression: 0
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_COMPRESSION, value: "0"}}
+
+  - it: maps logLevel quiet and verbose to exactly one flag
+    template: templates/statefulset.yaml
+    set:
+      mailpit.logLevel: verbose
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_VERBOSE, value: "true"}}
+      - notContains: {path: "spec.template.spec.containers[0].env", content: {name: MP_QUIET, value: "true"}}
+
+  - it: maps logLevel quiet
+    template: templates/statefulset.yaml
+    set:
+      mailpit.logLevel: quiet
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_QUIET, value: "true"}}
+
+  - it: maps web UI link-check and compression options
+    template: templates/statefulset.yaml
+    set:
+      mailpit.ui: {allowInternalHttpRequests: true, disableLinkCheckRateLimit: true, allowUntrustedTls: true, disableHttpCompression: true}
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_ALLOW_INTERNAL_HTTP_REQUESTS, value: "true"}}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_DISABLE_LINK_CHECK_RATE_LIMIT, value: "true"}}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_ALLOW_UNTRUSTED_TLS, value: "true"}}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_DISABLE_HTTP_COMPRESSION, value: "true"}}
+
+  - it: maps the spam check engine to its own variable
+    template: templates/statefulset.yaml
+    set:
+      mailpit.spamCheck: {engine: rspamd, address: "http://rspamd:11334"}
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_ENABLE_RSPAMD, value: "http://rspamd:11334"}}
+      - notContains: {path: "spec.template.spec.containers[0].env", content: {name: MP_ENABLE_SPAMASSASSIN}, any: true}
+
+  - it: maps spamassassin
+    template: templates/statefulset.yaml
+    set:
+      mailpit.spamCheck: {engine: spamassassin, address: "spamd:783"}
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_ENABLE_SPAMASSASSIN, value: "spamd:783"}}
+
+  - it: maps SMTP strictness options
+    template: templates/statefulset.yaml
+    set:
+      mailpit.smtp: {strictRfcHeaders: true, ignoreRejectedRecipients: true}
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_SMTP_STRICT_RFC_HEADERS, value: "true"}}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_SMTP_IGNORE_REJECTED_RECIPIENTS, value: "true"}}
+
+  - it: maps chaos testing
+    template: templates/statefulset.yaml
+    set:
+      mailpit.chaos: {enabled: true, triggers: "Sender:451:50"}
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_ENABLE_CHAOS, value: "true"}}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_CHAOS_TRIGGERS, value: "Sender:451:50"}}
+
+  - it: maps the webhook from a plain URL
+    template: templates/statefulset.yaml
+    set:
+      mailpit.webhook: {url: "https://hooks.example.com/x", limit: 5, delay: 2}
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_WEBHOOK_URL, value: "https://hooks.example.com/x"}}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_WEBHOOK_LIMIT, value: "5"}}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_WEBHOOK_DELAY, value: "2"}}
+
+  - it: reads the webhook URL from a secret so tokens stay out of the pod spec
+    template: templates/statefulset.yaml
+    set:
+      mailpit.webhook: {existingSecret: hook, existingSecretKey: url}
+    asserts:
+      - contains:
+          path: "spec.template.spec.containers[0].env"
+          content: {name: MP_WEBHOOK_URL, valueFrom: {secretKeyRef: {name: hook, key: url}}}
+
+  - it: maps simple tagging options
+    template: templates/statefulset.yaml
+    set:
+      mailpit.tags: {filters: "urgent=subject:urgent", titleCase: true, disable: [plus-addresses, x-tags], username: true}
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_TAG, value: "urgent=subject:urgent"}}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_TAGS_TITLE_CASE, value: "true"}}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_TAGS_DISABLE, value: "plus-addresses,x-tags"}}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_TAGS_USERNAME, value: "true"}}
+
+  - it: renders none of the optional variables by default
+    template: templates/statefulset.yaml
+    asserts:
+      - notContains: {path: "spec.template.spec.containers[0].env", content: {name: MP_QUIET}, any: true}
+      - notContains: {path: "spec.template.spec.containers[0].env", content: {name: MP_VERBOSE}, any: true}
+      - notContains: {path: "spec.template.spec.containers[0].env", content: {name: MP_COMPRESSION}, any: true}
+      - notContains: {path: "spec.template.spec.containers[0].env", content: {name: MP_WEBHOOK_URL}, any: true}
+      - notContains: {path: "spec.template.spec.containers[0].env", content: {name: MP_ENABLE_CHAOS}, any: true}

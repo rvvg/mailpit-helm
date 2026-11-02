@@ -20,3 +20,15 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: mailpit.smtp.tls.enabled needs one of secretName, certManager.enabled or selfSigned
+  - it: requires an address for the spam check engine
+    set:
+      mailpit.spamCheck.engine: rspamd
+    asserts:
+      - failedTemplate:
+          errorMessage: mailpit.spamCheck.address is required when mailpit.spamCheck.engine is set
+  - it: rejects a webhook URL given both inline and from a secret
+    set:
+      mailpit.webhook: {url: "https://h.example.com", existingSecret: s}
+    asserts:
+      - failedTemplate:
+          errorMessage: mailpit.webhook.url and mailpit.webhook.existingSecret are mutually exclusive
