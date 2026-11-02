@@ -98,6 +98,8 @@ jobs:
         with:
           scan-type: config
           scan-ref: charts/mailpit
+          trivy-config: trivy.yaml
+          trivyignores: .trivyignore
           severity: MEDIUM,HIGH,CRITICAL
           exit-code: "1"
           format: sarif

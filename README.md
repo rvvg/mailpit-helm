@@ -1,7 +1,7 @@
 # Mailpit Helm Chart
 
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/mailpit-helm)](https://artifacthub.io/packages/search?repo=mailpit-helm)
-[![Lint and Test](https://github.com/rvvg/mailpit-helm/actions/workflows/lint-test.yaml/badge.svg)](https://github.com/rvvg/mailpit-helm/actions/workflows/lint-test.yaml)
+[![CI](https://github.com/rvvg/mailpit-helm/actions/workflows/ci.yaml/badge.svg)](https://github.com/rvvg/mailpit-helm/actions/workflows/ci.yaml)
 [![Release](https://img.shields.io/github/v/release/rvvg/mailpit-helm?filter=mailpit-*)](https://github.com/rvvg/mailpit-helm/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
@@ -13,8 +13,12 @@ clusters and every outgoing email is captured instead of being delivered.
   no ServiceAccount token, no outbound version check.
 - **Opt-in defence in depth** — NetworkPolicy with default-deny egress, basic auth for UI / SMTP / Send API,
   `Host` header allow-list against DNS rebinding, SMTP STARTTLS/TLS, oauth2-proxy SSO on ingress-nginx.
+- **Complete** — every Mailpit runtime option is a typed, documented value: SMTP relay/forward, POP3,
+  tagging rules, webhooks, SpamAssassin/rspamd, chaos testing, rqlite, compression and more.
 - **Operable** — Prometheus metrics on a dedicated port + ServiceMonitor, `helm test`, JSON-schema
   validated values, fail-fast checks for contradictory settings.
+- **Verifiable** — 50 unit tests, install tests on three Kubernetes versions, Trivy scan, cosign-signed
+  OCI artifact with build provenance.
 - **Zero dependencies** — no library sub-charts; the chart renders the same everywhere.
 
 ## Contents
@@ -33,12 +37,7 @@ clusters and every outgoing email is captured instead of being delivered.
 Requirements: Kubernetes 1.25+, Helm 3.8+.
 
 ```console
-# OCI registry (recommended, signed with cosign)
 helm install mailpit oci://ghcr.io/rvvg/charts/mailpit -n mailpit --create-namespace
-
-# or the classic Helm repository
-helm repo add mailpit-helm https://rvvg.github.io/mailpit-helm
-helm install mailpit mailpit-helm/mailpit -n mailpit --create-namespace
 ```
 
 ```console
@@ -56,7 +55,7 @@ Applications send mail to `mailpit.mailpit.svc:1025`.
 
 The most widely used alternative is the community chart [`jouve/mailpit`](https://github.com/jouve/charts)
 (compared with version 0.39.0). Both charts are good choices; this one focuses on security controls and
-cluster integration, that one ships first-class SMTP relay configuration.
+cluster integration and complete option coverage.
 
 | | **this chart** | jouve/mailpit 0.39.0 |
 |---|:---:|:---:|
@@ -71,6 +70,10 @@ cluster integration, that one ships first-class SMTP relay configuration.
 | Outbound version check disabled by default | ✅ | ❌ |
 | Basic auth: web UI / SMTP | ✅ / ✅ | ✅ / ✅ |
 | Basic auth: Send API (`/api/v1/send`) | ✅ | via env only |
+| POP3 server (auth, TLS, Service port, NetworkPolicy) | ✅ | ❌ |
+| SMTP relay (`release` / `all` / `matching`) and forward | ✅ / ✅ | ✅ / ❌ |
+| Tagging rules, webhooks (URL from a Secret), SpamAssassin/rspamd, chaos | ✅ | via env only |
+| Typed values for all Mailpit runtime options | ✅ | partial |
 | oauth2-proxy SSO helper for ingress-nginx (groups / emails) | ✅ | ❌ |
 | Prometheus metrics on a separate port + ServiceMonitor | ✅ | ❌ |
 | `helm test` (web UI + SMTP round trip) | ✅ | ❌ |
@@ -78,19 +81,17 @@ cluster integration, that one ships first-class SMTP relay configuration.
 | Web UI TLS | ✅ | ✅ |
 | Ingress / Gateway API HTTPRoute | ✅ / ✅ | ✅ / ✅ |
 | Dedicated SMTP Service (e.g. internal LoadBalancer) | ✅ | ✅ (separate HTTP and SMTP services) |
-| SMTP relay configuration | via `extraEnv`/`extraVolumes` (by design) | ✅ |
-| Signed OCI artifact (cosign keyless) | ✅ | — |
+| Unit tests / install tests in CI | 50 helm-unittest cases / 3 Kubernetes versions | helm-unittest / ✅ |
+| Signed OCI artifact (cosign keyless) + build provenance | ✅ | — |
 
-**Why no first-class relay?** Mailpit in a shared cluster is a *mail sink*: the safest default is that a
-captured message can never leave the cluster by accident. Relay and forwarding remain possible through
-`extraEnv`, `extraVolumes` and `networkPolicy.egress.extra` for teams that need them and opt in
-deliberately.
+Relay and forward are off by default and the NetworkPolicy keeps egress DNS-only, so a captured message
+cannot leave the cluster by accident; `NOTES.txt` warns when an outbound feature meets that policy.
 
 ## Security
 
 | Control | Default | How to change |
 |---|---|---|
-| Runs as UID/GID 1000, non-root, no privilege escalation, all capabilities dropped | on | `podSecurityContext`, `securityContext` |
+| Runs as UID/GID 10001 (never a host user), non-root, no privilege escalation, all capabilities dropped | on | `podSecurityContext`, `securityContext` |
 | Read-only root filesystem (`/data` and `/tmp` are volumes) | on | `securityContext.readOnlyRootFilesystem` |
 | `seccompProfile: RuntimeDefault` | on | `podSecurityContext.seccompProfile` |
 | ServiceAccount token not mounted, service links disabled | on | `serviceAccount.automountServiceAccountToken` |
@@ -243,24 +244,48 @@ mailpit:
 Metrics are served on a separate port (`9090`) and Service (`<fullname>-metrics`), so they are never
 reachable through the Ingress.
 
-### Any other Mailpit option
-
-Every [runtime option](https://mailpit.axllent.org/docs/configuration/runtime-options/) can be set with
-`extraEnv`:
+### Release captured mail through a real SMTP server
 
 ```yaml
-extraEnv:
-  - name: MP_WEBHOOK_URL
-    value: https://hooks.example.com/mailpit
+mailpit:
+  smtp:
+    relay:
+      mode: release          # manual "Release" button; `all` or `matching` relay automatically
+      existingSecret: mailpit-relay   # key relay.yaml, see Mailpit SMTP relay docs
 networkPolicy:
+  enabled: true
   egress:
     extra:
       - to:
           - ipBlock:
-              cidr: 203.0.113.10/32
+              cidr: 203.0.113.25/32
         ports:
-          - port: 443
+          - port: 587
 ```
+
+### POP3, tagging and webhooks
+
+```yaml
+mailpit:
+  pop3:
+    enabled: true            # POP3 always requires credentials
+    auth:
+      existingSecret: mailpit-pop3     # key pop3.htpasswd
+  tags:
+    filters: "billing=subject:invoice"
+    config:
+      filters:
+        - match: "from:@example.com"
+          tags: internal
+  webhook:
+    existingSecret: mailpit-webhook    # key url, keeps tokens out of the pod spec
+```
+
+### Option coverage
+
+Every [Mailpit runtime option](https://mailpit.axllent.org/docs/configuration/runtime-options/) has a
+value in this chart except `MP_LOG_FILE` — logs belong on stdout in Kubernetes and the root filesystem
+is read-only. Anything else, including future options, can be passed with `extraEnv`.
 
 ## Using Mailpit from applications and tests
 
@@ -281,6 +306,9 @@ redirected to an SSO login page.
   if required, and run `helm upgrade` again.
 - PVCs are retained when the release is uninstalled (`persistence.retentionPolicy`). Delete them
   manually if you no longer need the messages.
+- Changing `podSecurityContext.runAsUser` on an existing volume relies on `fsGroup` to fix ownership.
+  CSI volumes (EBS, PD, Azure Disk) handle this; `hostPath`/`local-path` volumes do not — fix ownership
+  manually or keep the previous UID there.
 
 ## Parameters
 
@@ -307,6 +335,14 @@ redirected to an SSO login page.
 | `mailpit.maxAge` | `""` | Max message age, e.g. `36h` or `14d`; empty = unlimited (`MP_MAX_AGE`) |
 | `mailpit.maxMessageSize` | `""` | Max accepted message size in MB; empty = Mailpit default 50 (`MP_MAX_MESSAGE_SIZE`) |
 | `mailpit.disableVersionCheck` | `true` | Disable the periodic GitHub release check - no outbound calls (`MP_DISABLE_VERSION_CHECK`) |
+| `mailpit.logLevel` | `"info"` | Log verbosity: `info`, `quiet` (errors only, `MP_QUIET`) or `verbose` (debug, `MP_VERBOSE`) |
+| `mailpit.compression` | `""` | zstd compression level of stored messages, `0`-`3`; empty = Mailpit default 1 (`MP_COMPRESSION`) |
+| `mailpit.useMessageDates` | `false` | Use the message `Date` header as the received time (`MP_USE_MESSAGE_DATES`) |
+| `mailpit.ignoreDuplicateIds` | `false` | Drop messages whose Message-Id is already stored (`MP_IGNORE_DUPLICATE_IDS`) |
+| `mailpit.database.url` | `""` | Override `MP_DATABASE`, e.g. an rqlite URL `http://rqlite:4001`. Default: SQLite file on the data volume |
+| `mailpit.database.disableWAL` | `false` | Disable SQLite write-ahead logging; required on NFS/SMB volumes (`MP_DISABLE_WAL`) |
+| `mailpit.database.disableAutoVacuum` | `false` | Disable automatic VACUUM; not recommended (`MP_DISABLE_AUTO_VACUUM`) |
+| `mailpit.database.tenantId` | `""` | Table prefix to share one database between instances (`MP_TENANT_ID`) |
 | `mailpit.ui.auth.enabled` | `false` | Protect the web UI and API with HTTP basic auth (`MP_UI_AUTH_FILE`) |
 | `mailpit.ui.auth.htpasswd` | `""` | htpasswd content (`user:bcrypt-hash` lines). Ignored when `existingSecret` is set |
 | `mailpit.ui.auth.existingSecret` | `""` | Existing secret with the htpasswd file |
@@ -317,6 +353,12 @@ redirected to an SSO login page.
 | `mailpit.ui.apiCors` | `""` | Hosts allowed to make cross-origin API requests (`MP_API_CORS`) |
 | `mailpit.ui.blockRemoteCssAndFonts` | `false` | Block remote CSS and fonts in rendered messages via CSP (`MP_BLOCK_REMOTE_CSS_AND_FONTS`) |
 | `mailpit.ui.hideDeleteAllButton` | `false` | Hide the "Delete all" button in the web UI (`MP_HIDE_DELETE_ALL_BUTTON`) |
+| `mailpit.ui.disableHttpCompression` | `false` | Disable gzip compression of web UI/API responses (`MP_DISABLE_HTTP_COMPRESSION`) |
+| `mailpit.ui.allowInternalHttpRequests` | `false` | Let link check, HTML check and screenshots reach internal IPs; SSRF risk (`MP_ALLOW_INTERNAL_HTTP_REQUESTS`) |
+| `mailpit.ui.disableLinkCheckRateLimit` | `false` | Disable the link check rate limit (`MP_DISABLE_LINK_CHECK_RATE_LIMIT`) |
+| `mailpit.ui.allowUntrustedTls` | `false` | Skip TLS verification for link check and screenshots (`MP_ALLOW_UNTRUSTED_TLS`) |
+| `mailpit.spamCheck.engine` | `""` | Spam scoring engine: `""` (off), `spamassassin` (`MP_ENABLE_SPAMASSASSIN`) or `rspamd` (`MP_ENABLE_RSPAMD`) |
+| `mailpit.spamCheck.address` | `""` | SpamAssassin `host:port` or rspamd URL/`host:port` (optionally with password) |
 | `mailpit.sendApi.auth.enabled` | `false` | Separate basic auth for the Send API `/api/v1/send` (`MP_SEND_API_AUTH_FILE`) |
 | `mailpit.sendApi.auth.htpasswd` | `""` | htpasswd content. Ignored when `existingSecret` is set |
 | `mailpit.sendApi.auth.existingSecret` | `""` | Existing secret with the htpasswd file |
@@ -341,6 +383,35 @@ redirected to an SSO login page.
 | `mailpit.smtp.allowedRecipients` | `""` | Regular expression recipients must match (`MP_SMTP_ALLOWED_RECIPIENTS`) |
 | `mailpit.smtp.maxRecipients` | `""` | Max recipients per message; empty = Mailpit default 100 (`MP_SMTP_MAX_RECIPIENTS`) |
 | `mailpit.smtp.disableRDNS` | `true` | Disable reverse DNS lookups of SMTP clients - useless for pod IPs (`MP_SMTP_DISABLE_RDNS`) |
+| `mailpit.smtp.strictRfcHeaders` | `false` | Reject messages with bare `\n` line endings instead of fixing them (`MP_SMTP_STRICT_RFC_HEADERS`) |
+| `mailpit.smtp.ignoreRejectedRecipients` | `false` | Answer 250 OK to rejected recipients but drop their copy (`MP_SMTP_IGNORE_REJECTED_RECIPIENTS`) |
+| `mailpit.smtp.relay.mode` | `"disabled"` | `disabled`, `release` (manual release from UI/API), `all` (`MP_SMTP_RELAY_ALL`) or `matching` (`MP_SMTP_RELAY_MATCHING`) |
+| `mailpit.smtp.relay.matching` | `""` | Recipient regular expression for `mode: matching` |
+| `mailpit.smtp.relay.config` | `{}` | Relay config (`MP_SMTP_RELAY_CONFIG`), rendered into a Secret |
+| `mailpit.smtp.relay.existingSecret` | `""` | Existing secret with the relay config instead of `config` |
+| `mailpit.smtp.relay.existingSecretKey` | `"relay.yaml"` | Key of the relay config in `existingSecret` |
+| `mailpit.smtp.forward.enabled` | `false` | Forward a copy of every message (`MP_SMTP_FORWARD_CONFIG`) |
+| `mailpit.smtp.forward.config` | `{}` | Forward config, rendered into a Secret |
+| `mailpit.smtp.forward.existingSecret` | `""` | Existing secret with the forward config instead of `config` |
+| `mailpit.smtp.forward.existingSecretKey` | `"forward.yaml"` | Key of the forward config in `existingSecret` |
+| `mailpit.tags.filters` | `""` | Auto-tag rules `tag=search` separated by spaces (`MP_TAG`) |
+| `mailpit.tags.titleCase` | `false` | Convert new tags to TitleCase (`MP_TAGS_TITLE_CASE`) |
+| `mailpit.tags.disable` | `[]` | Built-in tagging to disable: `plus-addresses`, `x-tags` (`MP_TAGS_DISABLE`) |
+| `mailpit.tags.username` | `false` | Tag messages with the authenticated SMTP/HTTP username (`MP_TAGS_USERNAME`) |
+| `mailpit.tags.config` | `{}` | Tag rules file (`MP_TAGS_CONFIG`), e.g. `{filters: [{match: "subject:urgent", tags: urgent}]}` |
+| `mailpit.pop3.enabled` | `false` | Run the POP3 server (`MP_POP3_BIND_ADDR`) so mail clients can download captured messages |
+| `mailpit.pop3.auth.htpasswd` | `""` | htpasswd content; POP3 always requires authentication (`MP_POP3_AUTH_FILE`) |
+| `mailpit.pop3.auth.existingSecret` | `""` | Existing secret with the htpasswd file |
+| `mailpit.pop3.auth.existingSecretKey` | `"pop3.htpasswd"` | Key in the secret that holds the htpasswd file |
+| `mailpit.pop3.tls.enabled` | `false` | POP3 over TLS (`MP_POP3_TLS_CERT`/`MP_POP3_TLS_KEY`) |
+| `mailpit.pop3.tls.secretName` | `""` | Secret of type `kubernetes.io/tls` |
+| `mailpit.webhook.url` | `""` | URL called for every new message (`MP_WEBHOOK_URL`). Prefer `existingSecret` when it carries a token |
+| `mailpit.webhook.existingSecret` | `""` | Secret holding the webhook URL |
+| `mailpit.webhook.existingSecretKey` | `"url"` | Key of the webhook URL in `existingSecret` |
+| `mailpit.webhook.limit` | `""` | Max webhook requests per second; empty = Mailpit default 1 (`MP_WEBHOOK_LIMIT`) |
+| `mailpit.webhook.delay` | `""` | Delay in seconds before calling the webhook (`MP_WEBHOOK_DELAY`) |
+| `mailpit.chaos.enabled` | `false` | Enable chaos testing in the API and web UI (`MP_ENABLE_CHAOS`) |
+| `mailpit.chaos.triggers` | `""` | Startup chaos triggers, e.g. `Sender:451:50` (`MP_CHAOS_TRIGGERS`) |
 | `mailpit.metrics.enabled` | `false` | Expose Prometheus metrics on a dedicated port (`MP_ENABLE_PROMETHEUS`), not reachable via ingress |
 | `mailpit.metrics.port` | `9090` | Metrics port |
 | `mailpit.metrics.serviceMonitor.enabled` | `false` | Create a prometheus-operator ServiceMonitor |
@@ -362,6 +433,7 @@ redirected to an SSO login page.
 | `service.type` | `"ClusterIP"` | Service type for web UI/API and SMTP |
 | `service.httpPort` | `8025` | Web UI/API port |
 | `service.smtpPort` | `1025` | SMTP port |
+| `service.pop3Port` | `1110` | POP3 port, used when `mailpit.pop3.enabled` |
 | `service.annotations` | `{}` | Service annotations |
 | `smtpService.enabled` | `false` | Create a dedicated SMTP Service |
 | `smtpService.type` | `"LoadBalancer"` | Service type |
@@ -390,10 +462,11 @@ redirected to an SSO login page.
 | `networkPolicy.httpFrom` | `[]` | Peers allowed to reach the web UI/API, e.g. the ingress controller namespace |
 | `networkPolicy.smtpFrom` | `[]` | Peers allowed to send mail over SMTP |
 | `networkPolicy.metricsFrom` | `[]` | Peers allowed to scrape metrics |
+| `networkPolicy.pop3From` | `[]` | Peers allowed to use POP3 |
 | `networkPolicy.egress.enabled` | `true` | Restrict egress. Mailpit is a sink: no relay, link check, webhooks or version check unless allowed below |
 | `networkPolicy.egress.allowDNS` | `true` | Allow DNS to kube-dns/CoreDNS |
 | `networkPolicy.egress.extra` | `[]` | Extra egress rules, e.g. a webhook receiver or SpamAssassin |
-| `podSecurityContext` | `{"runAsNonRoot": true, "runAsUser": 1000, "runAsGroup": 1000, "fsGroup": 1000, "fsGroupChangePolicy": "OnRootMismatch", "seccompProfile": {"type": "RuntimeDefault"}}` | Pod security context. Compliant with the `restricted` Pod Security Standard |
+| `podSecurityContext` | `{"runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001, "fsGroupChangePolicy": "OnRootMismatch", "seccompProfile": {"type": "RuntimeDefault"}}` | Pod security context. Compliant with the `restricted` Pod Security Standard |
 | `securityContext` | `{"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true, "runAsNonRoot": true, "privileged": false, "capabilities": {"drop": ["ALL"]}}` | Container security context |
 | `resources` | `{"requests": {"cpu": "10m", "memory": "64Mi"}, "limits": {"memory": "256Mi"}}` | Resource requests/limits |
 | `livenessProbe.enabled` | `true` | Enable the liveness probe (`/livez`) |
@@ -414,23 +487,34 @@ redirected to an SSO login page.
 ## Development
 
 ```console
-make lint      # helm lint + kubeconform for every ci/*.yaml values file
-make docs      # regenerate the Parameters table from values.yaml comments
-make test      # kind + Calico, install every ci/*.yaml values file and run helm test
+make unit           # helm-unittest (charts/mailpit/tests)
+make lint           # helm lint + kubeconform for every ci/*.yaml values file
+make docs           # regenerate the Parameters table from values.yaml comments
+make test-cluster   # kind + Calico
+make test           # ct install: every ci/*.yaml, helm test, upgrade
 ```
+
+Pipeline (`.github/workflows`):
+
+| Workflow | Checks |
+|---|---|
+| `ci.yaml` | actionlint · README in sync · helm lint + kubeconform · ct lint (yamllint, Chart schema, version bump) · helm-unittest · Trivy config scan (SARIF to code scanning) · `ct install` + `helm test` + upgrade on Kubernetes 1.34 / 1.35 / 1.37 with Calico |
+| `release.yaml` | on chart changes in `main`: package · push to `oci://ghcr.io/rvvg/charts` · cosign keyless signature · build provenance attestation · Artifact Hub metadata · GitHub release |
+
+All actions are pinned to commit SHAs and updated by Dependabot.
 
 - Every value in `values.yaml` is documented with a `# --` comment; `make docs` turns them into the table
   above. CI fails if the README is out of date.
-- Bump `version` in `Chart.yaml` and update `artifacthub.io/changes` for every change. Merging to `main`
-  publishes the chart to GitHub Releases, the Helm repository on GitHub Pages and
-  `oci://ghcr.io/rvvg/charts`, and signs the OCI artifact with cosign.
+- Write a failing unit test first, then change the templates.
+- Bump `version` in `Chart.yaml` and update `artifacthub.io/changes` for every change.
 
-Verify a release signature:
+Verify a release signature and provenance:
 
 ```console
 cosign verify ghcr.io/rvvg/charts/mailpit:<version> \
   --certificate-identity-regexp 'https://github.com/rvvg/mailpit-helm/.github/workflows/release.yaml@.*' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
+gh attestation verify oci://ghcr.io/rvvg/charts/mailpit:<version> --owner rvvg
 ```
 
 ## License

@@ -2,8 +2,8 @@ apiVersion: v2
 name: mailpit
 description: >-
   Mailpit - email & SMTP testing tool with web UI and API. Secure-by-default,
-  dependency-free chart: restricted Pod Security, NetworkPolicy, oauth2-proxy
-  integration, SMTP/UI TLS, Prometheus metrics, Gateway API.
+  dependency-free chart covering every Mailpit option: restricted Pod Security,
+  NetworkPolicy, oauth2-proxy SSO, SMTP/UI/POP3 TLS, relay, Prometheus, Gateway API.
 type: application
 version: 1.0.0
 appVersion: "v1.33.0"
@@ -16,6 +16,7 @@ sources:
 keywords:
   - mailpit
   - email
+  - pop3
   - smtp
   - mail
   - testing
@@ -58,3 +59,7 @@ annotations:
       description: Gateway API HTTPRoute
     - kind: added
       description: values.schema.json validation
+    - kind: added
+      description: All Mailpit runtime options as typed values (relay, forward, POP3, tags, webhook, spam check, chaos, rqlite)
+    - kind: security
+      description: Runs as UID/GID 10001 by default
