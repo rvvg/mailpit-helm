@@ -499,7 +499,7 @@ Pipeline (`.github/workflows`):
 | Workflow | Checks |
 |---|---|
 | `ci.yaml` | actionlint · README in sync · helm lint + kubeconform · ct lint (yamllint, Chart schema, version bump) · helm-unittest · Trivy config scan (SARIF to code scanning) · `ct install` + `helm test` + upgrade on Kubernetes 1.34 / 1.35 / 1.37 with Calico |
-| `release.yaml` | on chart changes in `main`: package · push to `oci://ghcr.io/rvvg/charts` · cosign keyless signature · build provenance attestation · Artifact Hub metadata · GitHub release |
+| `release.yaml` | after a green CI run on `main`: skip if version exists · package · push to `oci://ghcr.io/rvvg/charts` · cosign keyless signature · build provenance attestation · Artifact Hub metadata · GitHub release |
 
 All actions are pinned to commit SHAs and updated by Dependabot.
 

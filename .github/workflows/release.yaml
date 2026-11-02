@@ -1,11 +1,12 @@
 name: Release
 
+# Runs only after CI succeeded on main, and builds exactly the commit CI tested.
+# Publishing is idempotent: an already published chart version is skipped.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-    paths:
-      - charts/**
-      - artifacthub-repo.yml
   workflow_dispatch:
 
 permissions:
@@ -22,6 +23,9 @@ env:
 
 jobs:
   release:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -32,6 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
 
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
@@ -125,6 +130,7 @@ jobs:
           VERSION: ${{ steps.chart.outputs.version }}
           REF: ${{ steps.chart.outputs.ref }}
           DIGEST: ${{ steps.push.outputs.digest }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           changes=$(yq '.annotations["artifacthub.io/changes"]' "$CHART_DIR/Chart.yaml" | yq -r '.[] | "- " + .kind + ": " + .description')
           {
@@ -141,4 +147,4 @@ jobs:
             echo "$changes"
           } > notes.md
           gh release create "$NAME-$VERSION" dist/*.tgz \
-            --repo "$GITHUB_REPOSITORY" --title "$NAME $VERSION" --notes-file notes.md --target "$GITHUB_SHA"
+            --repo "$GITHUB_REPOSITORY" --title "$NAME $VERSION" --notes-file notes.md --target "$SHA"
