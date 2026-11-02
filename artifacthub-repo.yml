@@ -1,8 +1,7 @@
 # Artifact Hub repository metadata
 # https://github.com/artifacthub/hub/blob/master/docs/metadata/artifacthub-repo.yml
-# 1. Add the repository in the Artifact Hub control panel (kind: Helm charts,
-#    URL: https://rvvg.github.io/mailpit-helm).
-# 2. Put the repository ID shown there below; the next release publishes this file
-#    and Artifact Hub marks the repository as "Verified publisher".
-# 3. Optionally add `owners` with the email of your Artifact Hub account to claim ownership.
-repositoryID: 00000000-0000-0000-0000-000000000000
+# Published to oci://ghcr.io/rvvg/charts/mailpit:artifacthub.io by release.yaml on
+# every successful CI run on main; Artifact Hub then marks the repository as
+# "Verified publisher". Optionally add `owners` with the email of your Artifact Hub
+# account to claim ownership.
+repositoryID: 7d62c91f-8367-4f6e-88e8-be21fc61bd78

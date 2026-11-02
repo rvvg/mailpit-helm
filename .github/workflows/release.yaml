@@ -72,6 +72,16 @@ jobs:
           echo "$GH_TOKEN" | helm registry login ghcr.io -u "$ACTOR" --password-stdin
           echo "$GH_TOKEN" | oras login ghcr.io -u "$ACTOR" --password-stdin
 
+      # Independent of the chart version: metadata changes (e.g. repositoryID) are
+      # published without a version bump. oras push of the same file is idempotent.
+      - name: Publish Artifact Hub repository metadata
+        env:
+          REF: ${{ steps.chart.outputs.ref }}
+        run: |
+          oras push "$REF:artifacthub.io" \
+            --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
+            artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
+
       - name: Skip if this version is already published
         id: exists
         env:
@@ -112,15 +122,6 @@ jobs:
           subject-name: ${{ steps.chart.outputs.ref }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
-
-      - name: Publish Artifact Hub repository metadata
-        if: steps.exists.outputs.published == 'false'
-        env:
-          REF: ${{ steps.chart.outputs.ref }}
-        run: |
-          oras push "$REF:artifacthub.io" \
-            --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
-            artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
 
       - name: GitHub release
         if: steps.exists.outputs.published == 'false'
