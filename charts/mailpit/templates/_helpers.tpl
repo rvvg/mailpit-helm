@@ -64,12 +64,46 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- printf "%s-auth" (include "mailpit.fullname" .) }}
 {{- end }}
 
-{{/* True when the chart must render its own auth secret */}}
-{{- define "mailpit.createAuthSecret" -}}
+{{/* Name of the chart-managed secret with relay/forward/tag config files */}}
+{{- define "mailpit.configSecretName" -}}
+{{- printf "%s-config" (include "mailpit.fullname" .) }}
+{{- end }}
+
+{{/* Basic-auth consumers as a JSON list of {name, file, enabled, htpasswd, existingSecret, existingSecretKey};
+     the file name is the mount path below /secrets */}}
+{{- define "mailpit.authKinds" -}}
 {{- $m := .Values.mailpit -}}
-{{- if or (and $m.ui.auth.enabled (not $m.ui.auth.existingSecret)) (and $m.smtp.auth.enabled (not $m.smtp.auth.existingSecret)) (and $m.sendApi.auth.enabled (not $m.sendApi.auth.existingSecret)) -}}
-true
-{{- end -}}
+{{- $kinds := list
+  (merge (dict "name" "ui" "enabled" $m.ui.auth.enabled) $m.ui.auth)
+  (merge (dict "name" "smtp" "enabled" $m.smtp.auth.enabled) $m.smtp.auth)
+  (merge (dict "name" "sendApi" "enabled" $m.sendApi.auth.enabled) $m.sendApi.auth)
+  (merge (dict "name" "pop3" "enabled" $m.pop3.enabled) $m.pop3.auth) -}}
+{{- $out := list -}}
+{{- range $kinds }}{{ $out = append $out (set (pick . "name" "enabled" "htpasswd" "existingSecret" "existingSecretKey") "file" (printf "%s.htpasswd" .name)) }}{{ end -}}
+{{- toJson $out -}}
+{{- end }}
+
+{{/* Config files as a JSON list of {file, enabled, config, existingSecret, existingSecretKey} */}}
+{{- define "mailpit.configFiles" -}}
+{{- $m := .Values.mailpit -}}
+{{- toJson (list
+  (dict "file" "relay.yaml" "enabled" (ne $m.smtp.relay.mode "disabled") "config" $m.smtp.relay.config "existingSecret" $m.smtp.relay.existingSecret "existingSecretKey" $m.smtp.relay.existingSecretKey)
+  (dict "file" "forward.yaml" "enabled" $m.smtp.forward.enabled "config" $m.smtp.forward.config "existingSecret" $m.smtp.forward.existingSecret "existingSecretKey" $m.smtp.forward.existingSecretKey)
+  (dict "file" "tags.yaml" "enabled" (not (empty $m.tags.config)) "config" $m.tags.config "existingSecret" "" "existingSecretKey" "")) -}}
+{{- end }}
+
+{{/* Projected volume sources for enabled items of an authKinds/configFiles list.
+     Args: dict "items" <list> "chartSecret" <name> */}}
+{{- define "mailpit.projectedSources" -}}
+{{- $out := list -}}
+{{- range .items }}
+{{- if .enabled }}
+{{- $name := .existingSecret | default $.chartSecret }}
+{{- $key := ternary .existingSecretKey .file (not (empty .existingSecret)) }}
+{{- $out = append $out (dict "secret" (dict "name" $name "items" (list (dict "key" $key "path" .file)))) }}
+{{- end }}
+{{- end }}
+{{- toJson $out -}}
 {{- end }}
 
 {{- define "mailpit.smtpTlsSecretName" -}}
@@ -134,6 +168,21 @@ httpGet:
 {{- end }}
 {{- if and $m.ui.tls.enabled (not $m.ui.tls.secretName) }}
 {{- fail "mailpit.ui.tls.enabled needs mailpit.ui.tls.secretName" }}
+{{- end }}
+{{- if and (ne $m.smtp.relay.mode "disabled") (empty $m.smtp.relay.config) (not $m.smtp.relay.existingSecret) }}
+{{- fail "mailpit.smtp.relay needs config or existingSecret when mode is not disabled" }}
+{{- end }}
+{{- if and (eq $m.smtp.relay.mode "matching") (not $m.smtp.relay.matching) }}
+{{- fail "mailpit.smtp.relay.matching is required when mode is matching" }}
+{{- end }}
+{{- if and $m.smtp.forward.enabled (empty $m.smtp.forward.config) (not $m.smtp.forward.existingSecret) }}
+{{- fail "mailpit.smtp.forward needs config or existingSecret when enabled" }}
+{{- end }}
+{{- if and $m.pop3.enabled (not $m.pop3.auth.htpasswd) (not $m.pop3.auth.existingSecret) }}
+{{- fail "mailpit.pop3 needs auth.htpasswd or auth.existingSecret - Mailpit requires POP3 authentication" }}
+{{- end }}
+{{- if and $m.pop3.enabled $m.pop3.tls.enabled (not $m.pop3.tls.secretName) }}
+{{- fail "mailpit.pop3.tls.enabled needs mailpit.pop3.tls.secretName" }}
 {{- end }}
 {{- if and $m.spamCheck.engine (not $m.spamCheck.address) }}
 {{- fail "mailpit.spamCheck.address is required when mailpit.spamCheck.engine is set" }}

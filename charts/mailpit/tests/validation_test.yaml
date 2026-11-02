@@ -32,3 +32,33 @@ tests:
     asserts:
       - failedTemplate:
           errorMessage: mailpit.webhook.url and mailpit.webhook.existingSecret are mutually exclusive
+  - it: requires a relay config when relaying
+    set:
+      mailpit.smtp.relay.mode: all
+    asserts:
+      - failedTemplate:
+          errorMessage: mailpit.smtp.relay needs config or existingSecret when mode is not disabled
+  - it: requires a recipient regex for matching relay
+    set:
+      mailpit.smtp.relay: {mode: matching, config: {host: x}}
+    asserts:
+      - failedTemplate:
+          errorMessage: mailpit.smtp.relay.matching is required when mode is matching
+  - it: requires a forward config when forwarding
+    set:
+      mailpit.smtp.forward.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: mailpit.smtp.forward needs config or existingSecret when enabled
+  - it: refuses POP3 without credentials
+    set:
+      mailpit.pop3.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: mailpit.pop3 needs auth.htpasswd or auth.existingSecret - Mailpit requires POP3 authentication
+  - it: requires a secret for POP3 TLS
+    set:
+      mailpit.pop3: {enabled: true, auth: {htpasswd: "u:h"}, tls: {enabled: true}}
+    asserts:
+      - failedTemplate:
+          errorMessage: mailpit.pop3.tls.enabled needs mailpit.pop3.tls.secretName

@@ -1,0 +1,38 @@
+# Exercises file-based options against a real Mailpit: relay (release mode),
+# forward, tag rules, POP3 with auth, plus scalar options.
+persistence:
+  enabled: true
+mailpit:
+  logLevel: verbose
+  compression: 3
+  ignoreDuplicateIds: true
+  database:
+    tenantId: ci
+  smtp:
+    relay:
+      mode: release
+      config:
+        host: smtp.example.com
+        port: 587
+        starttls: true
+    forward:
+      enabled: true
+      config:
+        to: qa@example.com
+        host: smtp.example.com
+        port: 587
+  tags:
+    filters: "ci=subject:helm"
+    config:
+      filters:
+        - match: "subject:helm"
+          tags: helm-test
+  pop3:
+    enabled: true
+    auth:
+      # pop / pop
+      htpasswd: "pop:$2y$05$N4e8TDdT6c9AzZR8wkpg0eU7tHP7tBxvH8ZBVMBWSWW/i5XQRUuY6"
+  chaos:
+    enabled: true
+networkPolicy:
+  enabled: true

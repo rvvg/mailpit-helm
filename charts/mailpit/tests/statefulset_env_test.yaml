@@ -82,14 +82,14 @@ tests:
           path: spec.template.spec.containers[0].env
           content: {name: MP_SMTP_AUTH_FILE, value: /secrets/smtp.htpasswd}
       - contains:
-          path: spec.template.spec.volumes
-          content:
-            name: auth
-            projected:
-              defaultMode: 288
-              sources:
-                - secret: {name: ext, items: [{key: k, path: smtp.htpasswd}]}
-                - secret: {name: mp-mailpit-auth, items: [{key: ui.htpasswd, path: ui.htpasswd}]}
+          path: spec.template.spec.volumes[?(@.name=="auth")].projected.sources
+          content: {secret: {name: ext, items: [{key: k, path: smtp.htpasswd}]}}
+      - contains:
+          path: spec.template.spec.volumes[?(@.name=="auth")].projected.sources
+          content: {secret: {name: mp-mailpit-auth, items: [{key: ui.htpasswd, path: ui.htpasswd}]}}
+      - equal:
+          path: spec.template.spec.volumes[?(@.name=="auth")].projected.defaultMode
+          value: 288
 
   - it: uses a self-signed SMTP certificate without mounting a secret
     template: templates/statefulset.yaml

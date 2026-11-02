@@ -1,10 +1,6 @@
 {{- $m := .Values.mailpit }}
-{{- $authSources := list }}
-{{- range $name, $a := dict "ui" $m.ui.auth "smtp" $m.smtp.auth "sendApi" $m.sendApi.auth }}
-{{- if $a.enabled }}
-{{- $authSources = append $authSources (dict "secret" (dict "name" ($a.existingSecret | default (include "mailpit.authSecretName" $)) "items" (list (dict "key" $a.existingSecretKey "path" (printf "%s.htpasswd" $name))))) }}
-{{- end }}
-{{- end }}
+{{- $authSources := include "mailpit.projectedSources" (dict "items" (include "mailpit.authKinds" . | fromJsonArray) "chartSecret" (include "mailpit.authSecretName" .)) | fromJsonArray }}
+{{- $configSources := include "mailpit.projectedSources" (dict "items" (include "mailpit.configFiles" . | fromJsonArray) "chartSecret" (include "mailpit.configSecretName" .)) | fromJsonArray }}
 {{- $allowedHosts := include "mailpit.allowedHosts" . }}
 apiVersion: apps/v1
 kind: StatefulSet
@@ -106,6 +102,15 @@ spec:
               (list "MP_WEBHOOK_URL" (ternary "" $m.webhook.url (not (empty $m.webhook.existingSecret))))
               (list "MP_WEBHOOK_LIMIT" $m.webhook.limit)
               (list "MP_WEBHOOK_DELAY" $m.webhook.delay)
+              (list "MP_SMTP_RELAY_CONFIG" (ternary "/config/relay.yaml" "" (ne $m.smtp.relay.mode "disabled")))
+              (list "MP_SMTP_RELAY_ALL" (eq $m.smtp.relay.mode "all"))
+              (list "MP_SMTP_RELAY_MATCHING" (ternary $m.smtp.relay.matching "" (eq $m.smtp.relay.mode "matching")))
+              (list "MP_SMTP_FORWARD_CONFIG" (ternary "/config/forward.yaml" "" $m.smtp.forward.enabled))
+              (list "MP_TAGS_CONFIG" (ternary "/config/tags.yaml" "" (not (empty $m.tags.config))))
+              (list "MP_POP3_BIND_ADDR" (ternary "0.0.0.0:1110" "" $m.pop3.enabled))
+              (list "MP_POP3_AUTH_FILE" (ternary "/secrets/pop3.htpasswd" "" $m.pop3.enabled))
+              (list "MP_POP3_TLS_CERT" (ternary "/tls/pop3/tls.crt" "" (and $m.pop3.enabled $m.pop3.tls.enabled)))
+              (list "MP_POP3_TLS_KEY" (ternary "/tls/pop3/tls.key" "" (and $m.pop3.enabled $m.pop3.tls.enabled)))
               (list "MP_ENABLE_CHAOS" $m.chaos.enabled)
               (list "MP_CHAOS_TRIGGERS" (ternary $m.chaos.triggers "" $m.chaos.enabled))
               (list "MP_ENABLE_PROMETHEUS" (ternary (printf "0.0.0.0:%d" (int $m.metrics.port)) "" $m.metrics.enabled))
@@ -130,6 +135,11 @@ spec:
             - name: smtp
               containerPort: 1025
               protocol: TCP
+            {{- if $m.pop3.enabled }}
+            - name: pop3
+              containerPort: 1110
+              protocol: TCP
+            {{- end }}
             {{- if $m.metrics.enabled }}
             - name: metrics
               containerPort: {{ $m.metrics.port }}
@@ -165,6 +175,16 @@ spec:
               mountPath: /tls/ui
               readOnly: true
             {{- end }}
+            {{- if and $m.pop3.enabled $m.pop3.tls.enabled }}
+            - name: pop3-tls
+              mountPath: /tls/pop3
+              readOnly: true
+            {{- end }}
+            {{- if $configSources }}
+            - name: config
+              mountPath: /config
+              readOnly: true
+            {{- end }}
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -196,6 +216,18 @@ spec:
           secret:
             secretName: {{ $m.ui.tls.secretName }}
             defaultMode: 0440
+        {{- end }}
+        {{- if and $m.pop3.enabled $m.pop3.tls.enabled }}
+        - name: pop3-tls
+          secret:
+            secretName: {{ $m.pop3.tls.secretName }}
+            defaultMode: 0440
+        {{- end }}
+        {{- if $configSources }}
+        - name: config
+          projected:
+            defaultMode: 0440
+            sources: {{- toYaml $configSources | nindent 14 }}
         {{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}

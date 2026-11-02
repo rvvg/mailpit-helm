@@ -19,4 +19,16 @@ WARNING: persistence is disabled - messages are lost when the pod restarts.
 WARNING: the web UI is exposed without authentication. Enable mailpit.ui.auth or ingress.oauth2Proxy.
 {{- end }}
 
+{{- $m := .Values.mailpit }}
+{{- $out := list }}
+{{- if ne $m.smtp.relay.mode "disabled" }}{{ $out = append $out "SMTP relay" }}{{ end }}
+{{- if $m.smtp.forward.enabled }}{{ $out = append $out "SMTP forward" }}{{ end }}
+{{- if or $m.webhook.url $m.webhook.existingSecret }}{{ $out = append $out "webhook" }}{{ end }}
+{{- if $m.spamCheck.engine }}{{ $out = append $out (printf "%s" $m.spamCheck.engine) }}{{ end }}
+{{- if and .Values.networkPolicy.enabled .Values.networkPolicy.egress.enabled $out (not .Values.networkPolicy.egress.extra) }}
+
+WARNING: networkPolicy.egress allows DNS only, but {{ join ", " $out }} need outbound connections.
+         Add the destinations to networkPolicy.egress.extra.
+{{- end }}
+
 Run `helm test {{ .Release.Name }} -n {{ .Release.Namespace }}` to verify the installation.

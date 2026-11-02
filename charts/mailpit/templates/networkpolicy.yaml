@@ -29,6 +29,13 @@ spec:
           protocol: TCP
       from: {{- toYaml $smtp | nindent 8 }}
     {{- end }}
+    {{- $pop3 := concat (.allowSameNamespace | ternary $same list) .pop3From }}
+    {{- if and $.Values.mailpit.pop3.enabled $pop3 }}
+    - ports:
+        - port: pop3
+          protocol: TCP
+      from: {{- toYaml $pop3 | nindent 8 }}
+    {{- end }}
     {{- if and $.Values.mailpit.metrics.enabled .metricsFrom }}
     - ports:
         - port: metrics

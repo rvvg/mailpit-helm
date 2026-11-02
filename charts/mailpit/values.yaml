@@ -167,6 +167,31 @@ mailpit:
     strictRfcHeaders: false
     # -- Answer 250 OK to rejected recipients but drop their copy (`MP_SMTP_IGNORE_REJECTED_RECIPIENTS`)
     ignoreRejectedRecipients: false
+    ## Relay: lets Mailpit send captured messages to a real SMTP server.
+    ## https://mailpit.axllent.org/docs/configuration/smtp-relay/
+    ## Remember to allow the relay host in networkPolicy.egress.extra.
+    relay:
+      # -- `disabled`, `release` (manual release from UI/API), `all` (`MP_SMTP_RELAY_ALL`) or `matching` (`MP_SMTP_RELAY_MATCHING`)
+      mode: disabled
+      # -- Recipient regular expression for `mode: matching`
+      matching: ""
+      # -- Relay config (`MP_SMTP_RELAY_CONFIG`), rendered into a Secret
+      config: {}
+      # -- Existing secret with the relay config instead of `config`
+      existingSecret: ""
+      # -- Key of the relay config in `existingSecret`
+      existingSecretKey: relay.yaml
+    ## Forward: sends a copy of every message to fixed addresses.
+    ## https://mailpit.axllent.org/docs/configuration/smtp-forward/
+    forward:
+      # -- Forward a copy of every message (`MP_SMTP_FORWARD_CONFIG`)
+      enabled: false
+      # -- Forward config, rendered into a Secret
+      config: {}
+      # -- Existing secret with the forward config instead of `config`
+      existingSecret: ""
+      # -- Key of the forward config in `existingSecret`
+      existingSecretKey: forward.yaml
 
   tags:
     # -- Auto-tag rules `tag=search` separated by spaces (`MP_TAG`)
@@ -177,6 +202,24 @@ mailpit:
     disable: []
     # -- Tag messages with the authenticated SMTP/HTTP username (`MP_TAGS_USERNAME`)
     username: false
+    # -- Tag rules file (`MP_TAGS_CONFIG`), e.g. `{filters: [{match: "subject:urgent", tags: urgent}]}`
+    config: {}
+
+  pop3:
+    # -- Run the POP3 server (`MP_POP3_BIND_ADDR`) so mail clients can download captured messages
+    enabled: false
+    auth:
+      # -- htpasswd content; POP3 always requires authentication (`MP_POP3_AUTH_FILE`)
+      htpasswd: ""
+      # -- Existing secret with the htpasswd file
+      existingSecret: ""
+      # -- Key in the secret that holds the htpasswd file
+      existingSecretKey: pop3.htpasswd
+    tls:
+      # -- POP3 over TLS (`MP_POP3_TLS_CERT`/`MP_POP3_TLS_KEY`)
+      enabled: false
+      # -- Secret of type `kubernetes.io/tls`
+      secretName: ""
 
   webhook:
     # -- URL called for every new message (`MP_WEBHOOK_URL`). Prefer `existingSecret` when it carries a token
@@ -252,6 +295,8 @@ service:
   httpPort: 8025
   # -- SMTP port
   smtpPort: 1025
+  # -- POP3 port, used when `mailpit.pop3.enabled`
+  pop3Port: 1110
   # -- Service annotations
   annotations: {}
 
@@ -326,6 +371,8 @@ networkPolicy:
   smtpFrom: []
   # -- Peers allowed to scrape metrics
   metricsFrom: []
+  # -- Peers allowed to use POP3
+  pop3From: []
   egress:
     # -- Restrict egress. Mailpit is a sink: no relay, link check, webhooks or version check unless allowed below
     enabled: true

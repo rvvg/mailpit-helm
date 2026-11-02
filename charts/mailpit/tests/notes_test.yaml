@@ -1,0 +1,17 @@
+suite: NOTES.txt
+templates:
+  - templates/NOTES.txt
+tests:
+  - it: warns when outbound features meet a DNS-only egress policy
+    set:
+      networkPolicy.enabled: true
+      mailpit.webhook.url: https://hooks.example.com
+    asserts:
+      - matchRegexRaw:
+          pattern: "WARNING: networkPolicy.egress allows DNS only.*webhook"
+  - it: stays quiet about egress when nothing goes out
+    set:
+      networkPolicy.enabled: true
+    asserts:
+      - notMatchRegexRaw:
+          pattern: networkPolicy.egress allows DNS only

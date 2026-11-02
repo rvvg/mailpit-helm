@@ -19,6 +19,12 @@ spec:
       port: {{ .Values.service.smtpPort }}
       targetPort: smtp
       protocol: TCP
+    {{- if .Values.mailpit.pop3.enabled }}
+    - name: pop3
+      port: {{ .Values.service.pop3Port }}
+      targetPort: pop3
+      protocol: TCP
+    {{- end }}
 {{- if .Values.mailpit.metrics.enabled }}
 ---
 apiVersion: v1

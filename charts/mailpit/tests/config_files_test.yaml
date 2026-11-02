@@ -1,0 +1,115 @@
+suite: relay, forward, tag rules and POP3
+templates:
+  - templates/statefulset.yaml
+  - templates/secret.yaml
+  - templates/service.yaml
+  - templates/networkpolicy.yaml
+release:
+  name: mp
+tests:
+  - it: relays every message with a chart-managed config
+    set:
+      mailpit.smtp.relay:
+        mode: all
+        config: {host: smtp.example.com, port: 587}
+    asserts:
+      - template: templates/statefulset.yaml
+        contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_SMTP_RELAY_CONFIG, value: /config/relay.yaml}}
+      - template: templates/statefulset.yaml
+        contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_SMTP_RELAY_ALL, value: "true"}}
+      - template: templates/statefulset.yaml
+        contains:
+          path: "spec.template.spec.volumes"
+          content:
+            name: config
+            projected:
+              defaultMode: 288
+              sources:
+                - secret: {name: mp-mailpit-config, items: [{key: relay.yaml, path: relay.yaml}]}
+      - template: templates/statefulset.yaml
+        exists: {path: "spec.template.metadata.annotations[\"checksum/secret\"]"}
+      - template: templates/secret.yaml
+        documentSelector: {path: metadata.name, value: mp-mailpit-config}
+        equal: {path: "stringData[\"relay.yaml\"]", value: "host: smtp.example.com\nport: 587\n"}
+
+  - it: relays only matching recipients
+    set:
+      mailpit.smtp.relay: {mode: matching, matching: '@example\.com$', existingSecret: relay, existingSecretKey: cfg}
+    asserts:
+      - template: templates/statefulset.yaml
+        contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_SMTP_RELAY_MATCHING, value: '@example\.com$'}}
+      - template: templates/statefulset.yaml
+        notContains: {path: "spec.template.spec.containers[0].env", content: {name: MP_SMTP_RELAY_ALL}, any: true}
+      - template: templates/statefulset.yaml
+        contains:
+          path: "spec.template.spec.volumes"
+          content:
+            name: config
+            projected:
+              defaultMode: 288
+              sources:
+                - secret: {name: relay, items: [{key: cfg, path: relay.yaml}]}
+
+  - it: release mode only enables manual release from the UI
+    set:
+      mailpit.smtp.relay: {mode: release, config: {host: smtp.example.com}}
+    asserts:
+      - template: templates/statefulset.yaml
+        contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_SMTP_RELAY_CONFIG, value: /config/relay.yaml}}
+      - template: templates/statefulset.yaml
+        notContains: {path: "spec.template.spec.containers[0].env", content: {name: MP_SMTP_RELAY_ALL}, any: true}
+      - template: templates/statefulset.yaml
+        notContains: {path: "spec.template.spec.containers[0].env", content: {name: MP_SMTP_RELAY_MATCHING}, any: true}
+
+  - it: forwards with a config and loads tag rules from a file
+    set:
+      mailpit.smtp.forward: {enabled: true, config: {to: qa@example.com, host: smtp.example.com}}
+      mailpit.tags.config: {filters: [{match: "subject:urgent", tags: urgent}]}
+    asserts:
+      - template: templates/statefulset.yaml
+        contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_SMTP_FORWARD_CONFIG, value: /config/forward.yaml}}
+      - template: templates/statefulset.yaml
+        contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_TAGS_CONFIG, value: /config/tags.yaml}}
+      - template: templates/secret.yaml
+        documentSelector: {path: metadata.name, value: mp-mailpit-config}
+        exists: {path: "stringData[\"forward.yaml\"]"}
+      - template: templates/secret.yaml
+        documentSelector: {path: metadata.name, value: mp-mailpit-config}
+        exists: {path: "stringData[\"tags.yaml\"]"}
+
+  - it: mounts no config volume and renders no config secret by default
+    asserts:
+      - template: templates/statefulset.yaml
+        notContains: {path: "spec.template.spec.volumes", content: {name: config}, any: true}
+      - template: templates/secret.yaml
+        hasDocuments: {count: 0}
+
+  - it: runs POP3 with mandatory auth, a service port and a policy rule
+    set:
+      mailpit.pop3: {enabled: true, auth: {htpasswd: "u:h"}, tls: {enabled: true, secretName: pop3-tls}}
+      networkPolicy: {enabled: true, allowSameNamespace: false, pop3From: [{namespaceSelector: {}}]}
+    asserts:
+      - template: templates/statefulset.yaml
+        contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_POP3_BIND_ADDR, value: "0.0.0.0:1110"}}
+      - template: templates/statefulset.yaml
+        contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_POP3_AUTH_FILE, value: /secrets/pop3.htpasswd}}
+      - template: templates/statefulset.yaml
+        contains: {path: "spec.template.spec.containers[0].env", content: {name: MP_POP3_TLS_CERT, value: /tls/pop3/tls.crt}}
+      - template: templates/statefulset.yaml
+        contains: {path: "spec.template.spec.containers[0].ports", content: {name: pop3, containerPort: 1110, protocol: TCP}}
+      - template: templates/service.yaml
+        documentIndex: 0
+        contains: {path: spec.ports, content: {name: pop3, port: 1110, targetPort: pop3, protocol: TCP}}
+      - template: templates/networkpolicy.yaml
+        equal:
+          path: spec.ingress
+          value: [{ports: [{port: pop3, protocol: TCP}], from: [{namespaceSelector: {}}]}]
+      - template: templates/secret.yaml
+        documentSelector: {path: metadata.name, value: mp-mailpit-auth}
+        equal: {path: "stringData[\"pop3.htpasswd\"]", value: "u:h"}
+
+  - it: does not expose POP3 by default
+    asserts:
+      - template: templates/service.yaml
+        documentIndex: 0
+        notContains: {path: spec.ports, content: {name: pop3}, any: true}

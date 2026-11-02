@@ -280,6 +280,51 @@
             },
             "ignoreRejectedRecipients": {
               "type": "boolean"
+            },
+            "relay": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "enum": [
+                    "disabled",
+                    "release",
+                    "all",
+                    "matching"
+                  ]
+                },
+                "matching": {
+                  "type": "string"
+                },
+                "config": {
+                  "type": "object"
+                },
+                "existingSecret": {
+                  "type": "string"
+                },
+                "existingSecretKey": {
+                  "type": "string"
+                }
+              }
+            },
+            "forward": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "config": {
+                  "type": "object"
+                },
+                "existingSecret": {
+                  "type": "string"
+                },
+                "existingSecretKey": {
+                  "type": "string"
+                }
+              }
             }
           },
           "additionalProperties": false
@@ -401,6 +446,9 @@
             },
             "username": {
               "type": "boolean"
+            },
+            "config": {
+              "type": "object"
             }
           }
         },
@@ -453,6 +501,42 @@
             },
             "triggers": {
               "type": "string"
+            }
+          }
+        },
+        "pop3": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "auth": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "htpasswd": {
+                  "type": "string"
+                },
+                "existingSecret": {
+                  "type": "string"
+                },
+                "existingSecretKey": {
+                  "type": "string"
+                }
+              }
+            },
+            "tls": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "secretName": {
+                  "type": "string"
+                }
+              }
             }
           }
         }
@@ -561,6 +645,11 @@
         },
         "annotations": {
           "type": "object"
+        },
+        "pop3Port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
         }
       },
       "additionalProperties": false
@@ -748,6 +837,12 @@
             }
           },
           "additionalProperties": false
+        },
+        "pop3From": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
         }
       },
       "additionalProperties": false
