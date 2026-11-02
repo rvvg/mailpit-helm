@@ -1,0 +1,22 @@
+{{- with .Values.mailpit.smtp.tls }}
+{{- if and .enabled .certManager.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "mailpit.fullname" $ }}-smtp
+  labels: {{- include "mailpit.labels" $ | nindent 4 }}
+spec:
+  secretName: {{ include "mailpit.smtpTlsSecretName" $ }}
+  duration: {{ .certManager.duration }}
+  renewBefore: {{ .certManager.renewBefore }}
+  dnsNames:
+    {{- range concat (include "mailpit.serviceHosts" $ | fromJsonArray) .certManager.dnsNames | uniq }}
+    - {{ . | quote }}
+    {{- end }}
+  issuerRef: {{- required "mailpit.smtp.tls.certManager.issuerRef is required" .certManager.issuerRef | toYaml | nindent 4 }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+{{- end }}
+{{- end }}

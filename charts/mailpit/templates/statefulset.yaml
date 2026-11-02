@@ -1,0 +1,275 @@
+{{- $m := .Values.mailpit }}
+{{- $authSources := list }}
+{{- range $name, $a := dict "ui" $m.ui.auth "smtp" $m.smtp.auth "sendApi" $m.sendApi.auth }}
+{{- if $a.enabled }}
+{{- $authSources = append $authSources (dict "secret" (dict "name" ($a.existingSecret | default (include "mailpit.authSecretName" $)) "items" (list (dict "key" $a.existingSecretKey "path" (printf "%s.htpasswd" $name))))) }}
+{{- end }}
+{{- end }}
+{{- $allowedHosts := include "mailpit.allowedHosts" . }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "mailpit.fullname" . }}
+  labels: {{- include "mailpit.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  serviceName: {{ include "mailpit.fullname" . }}
+  selector:
+    matchLabels: {{- include "mailpit.selectorLabels" . | nindent 6 }}
+  updateStrategy: {{- toYaml .Values.updateStrategy | nindent 4 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mailpit.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}{{ toYaml . | nindent 8 }}{{ end }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}{{ toYaml . | nindent 8 }}{{ end }}
+    spec:
+      serviceAccountName: {{ include "mailpit.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: mailpit
+          image: {{ include "mailpit.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- with .Values.extraArgs }}
+          args: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: MP_UI_BIND_ADDR
+              value: "0.0.0.0:8025"
+            - name: MP_SMTP_BIND_ADDR
+              value: "0.0.0.0:1025"
+            - name: MP_DATABASE
+              value: /data/mailpit.db
+            - name: MP_WEBROOT
+              value: {{ include "mailpit.webroot" . | quote }}
+            - name: TZ
+              value: {{ $m.timezone | quote }}
+            - name: MP_MAX_MESSAGES
+              value: {{ $m.maxMessages | quote }}
+            {{- with $m.maxAge }}
+            - name: MP_MAX_AGE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $m.maxMessageSize }}
+            - name: MP_MAX_MESSAGE_SIZE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $m.label }}
+            - name: MP_LABEL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if $m.disableVersionCheck }}
+            - name: MP_DISABLE_VERSION_CHECK
+              value: "true"
+            {{- end }}
+            {{- /* web UI / API */}}
+            {{- if $m.ui.auth.enabled }}
+            - name: MP_UI_AUTH_FILE
+              value: /secrets/ui.htpasswd
+            {{- end }}
+            {{- if $m.ui.tls.enabled }}
+            - name: MP_UI_TLS_CERT
+              value: /tls/ui/tls.crt
+            - name: MP_UI_TLS_KEY
+              value: /tls/ui/tls.key
+            {{- end }}
+            {{- with $allowedHosts }}
+            - name: MP_ALLOWED_HOSTS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $m.ui.apiCors }}
+            - name: MP_API_CORS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if $m.ui.blockRemoteCssAndFonts }}
+            - name: MP_BLOCK_REMOTE_CSS_AND_FONTS
+              value: "true"
+            {{- end }}
+            {{- if $m.ui.hideDeleteAllButton }}
+            - name: MP_HIDE_DELETE_ALL_BUTTON
+              value: "true"
+            {{- end }}
+            {{- if $m.sendApi.auth.enabled }}
+            - name: MP_SEND_API_AUTH_FILE
+              value: /secrets/sendApi.htpasswd
+            {{- end }}
+            {{- if $m.sendApi.auth.acceptAny }}
+            - name: MP_SEND_API_AUTH_ACCEPT_ANY
+              value: "true"
+            {{- end }}
+            {{- /* SMTP */}}
+            {{- if $m.smtp.auth.enabled }}
+            - name: MP_SMTP_AUTH_FILE
+              value: /secrets/smtp.htpasswd
+            {{- end }}
+            {{- if $m.smtp.auth.acceptAny }}
+            - name: MP_SMTP_AUTH_ACCEPT_ANY
+              value: "true"
+            {{- end }}
+            {{- if $m.smtp.auth.allowInsecure }}
+            - name: MP_SMTP_AUTH_ALLOW_INSECURE
+              value: "true"
+            {{- end }}
+            {{- if and $m.smtp.tls.enabled $m.smtp.tls.selfSigned }}
+            {{- $sans := printf "sans:%s" (concat (include "mailpit.serviceHosts" . | fromJsonArray) $m.smtp.tls.certManager.dnsNames | uniq | join ",") }}
+            - name: MP_SMTP_TLS_CERT
+              value: {{ $sans | quote }}
+            - name: MP_SMTP_TLS_KEY
+              value: {{ $sans | quote }}
+            {{- else if $m.smtp.tls.enabled }}
+            - name: MP_SMTP_TLS_CERT
+              value: /tls/smtp/tls.crt
+            - name: MP_SMTP_TLS_KEY
+              value: /tls/smtp/tls.key
+            {{- end }}
+            {{- if $m.smtp.tls.requireStartTLS }}
+            - name: MP_SMTP_REQUIRE_STARTTLS
+              value: "true"
+            {{- end }}
+            {{- if $m.smtp.tls.requireTLS }}
+            - name: MP_SMTP_REQUIRE_TLS
+              value: "true"
+            {{- end }}
+            {{- with $m.smtp.allowedRecipients }}
+            - name: MP_SMTP_ALLOWED_RECIPIENTS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $m.smtp.maxRecipients }}
+            - name: MP_SMTP_MAX_RECIPIENTS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if $m.smtp.disableRDNS }}
+            - name: MP_SMTP_DISABLE_RDNS
+              value: "true"
+            {{- end }}
+            {{- if $m.metrics.enabled }}
+            - name: MP_ENABLE_PROMETHEUS
+              value: {{ printf "0.0.0.0:%d" (int $m.metrics.port) | quote }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.extraEnvFrom }}
+          envFrom: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 8025
+              protocol: TCP
+            - name: smtp
+              containerPort: 1025
+              protocol: TCP
+            {{- if $m.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ $m.metrics.port }}
+              protocol: TCP
+            {{- end }}
+          {{- if .Values.startupProbe.enabled }}
+          startupProbe: {{- include "mailpit.probe" (dict "ctx" . "probe" .Values.startupProbe "path" "readyz") | nindent 12 }}
+          {{- end }}
+          {{- if .Values.livenessProbe.enabled }}
+          livenessProbe: {{- include "mailpit.probe" (dict "ctx" . "probe" .Values.livenessProbe "path" "livez") | nindent 12 }}
+          {{- end }}
+          {{- if .Values.readinessProbe.enabled }}
+          readinessProbe: {{- include "mailpit.probe" (dict "ctx" . "probe" .Values.readinessProbe "path" "readyz") | nindent 12 }}
+          {{- end }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+            {{- if $authSources }}
+            - name: auth
+              mountPath: /secrets
+              readOnly: true
+            {{- end }}
+            {{- if and $m.smtp.tls.enabled (not $m.smtp.tls.selfSigned) }}
+            - name: smtp-tls
+              mountPath: /tls/smtp
+              readOnly: true
+            {{- end }}
+            {{- if $m.ui.tls.enabled }}
+            - name: ui-tls
+              mountPath: /tls/ui
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if not .Values.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- else if .Values.persistence.existingClaim }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim }}
+        {{- end }}
+        {{- if $authSources }}
+        - name: auth
+          projected:
+            defaultMode: 0440
+            sources: {{- toYaml $authSources | nindent 14 }}
+        {{- end }}
+        {{- if and $m.smtp.tls.enabled (not $m.smtp.tls.selfSigned) }}
+        - name: smtp-tls
+          secret:
+            secretName: {{ include "mailpit.smtpTlsSecretName" . }}
+            defaultMode: 0440
+        {{- end }}
+        {{- if $m.ui.tls.enabled }}
+        - name: ui-tls
+          secret:
+            secretName: {{ $m.ui.tls.secretName }}
+            defaultMode: 0440
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
+  {{- with .Values.persistence.retentionPolicy }}
+  persistentVolumeClaimRetentionPolicy: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels: {{- include "mailpit.selectorLabels" . | nindent 10 }}
+        {{- with .Values.persistence.annotations }}
+        annotations: {{- toYaml . | nindent 10 }}
+        {{- end }}
+      spec:
+        accessModes: {{- toYaml .Values.persistence.accessModes | nindent 10 }}
+        {{- with .Values.persistence.storageClassName }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}
+  {{- end }}

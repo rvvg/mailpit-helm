@@ -1,0 +1,33 @@
+persistence:
+  enabled: true
+  size: 1Gi
+mailpit:
+  label: ci
+  maxAge: 14d
+  ui:
+    auth:
+      enabled: true
+      # admin / admin
+      htpasswd: "admin:$2y$05$MmEBF.QyLGQiFjReGLHjCOvYmGjX5qSw/FNnbtj1eoq3JznLcvCtC"
+    allowedHosts: [mailpit.example.com]
+  smtp:
+    auth:
+      acceptAny: true
+      allowInsecure: true
+  metrics:
+    enabled: true
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: mailpit.example.com
+  oauth2Proxy:
+    enabled: true
+    url: https://oauth2-proxy.example.com
+    allowedGroups: [mailpit-users]
+networkPolicy:
+  enabled: true
+  httpFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx

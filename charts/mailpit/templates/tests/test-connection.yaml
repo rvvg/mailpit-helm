@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "mailpit.fullname" . }}-test
+  labels:
+    {{- include "mailpit.auxLabels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 100
+    runAsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: test
+      image: {{ .Values.tests.image }}
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      env:
+        - name: SVC
+          value: {{ include "mailpit.fullname" . }}
+      command:
+        - sh
+        - -ec
+        - |
+          {{- $scheme := .Values.mailpit.ui.tls.enabled | ternary "https" "http" }}
+          curl -fsSk {{ $scheme }}://$SVC:{{ .Values.service.httpPort }}{{ include "mailpit.webroot" . }}readyz
+          echo "web UI ready"
+          {{- if not (or .Values.mailpit.smtp.auth.enabled .Values.mailpit.smtp.tls.requireTLS .Values.mailpit.smtp.tls.requireStartTLS) }}
+          printf 'Subject: helm test\r\n\r\nhello from helm test\r\n' | \
+            curl -fsS smtp://$SVC:{{ .Values.service.smtpPort }} --mail-from test@example.com --mail-rcpt test@example.com -T -
+          echo "SMTP accepted the message"
+          {{- end }}

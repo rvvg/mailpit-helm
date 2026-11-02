@@ -1,0 +1,54 @@
+# Everything locked down: basic auth everywhere, STARTTLS required, network isolated, metrics.
+# Create the secrets first:
+#   htpasswd -nbB admin '<password>' > ui.htpasswd
+#   htpasswd -nbB app   '<password>' > smtp.htpasswd
+#   kubectl -n mailpit create secret generic mailpit-auth --from-file=ui.htpasswd --from-file=smtp.htpasswd
+persistence:
+  enabled: true
+  size: 5Gi
+mailpit:
+  maxAge: 7d
+  ui:
+    auth:
+      enabled: true
+      existingSecret: mailpit-auth
+    allowedHosts: [mailpit.internal.example.com]
+    blockRemoteCssAndFonts: true
+    hideDeleteAllButton: true
+  sendApi:
+    auth:
+      enabled: true
+      existingSecret: mailpit-auth
+      existingSecretKey: ui.htpasswd
+  smtp:
+    auth:
+      enabled: true
+      existingSecret: mailpit-auth
+    tls:
+      enabled: true
+      requireStartTLS: true
+      certManager:
+        enabled: true
+        issuerRef:
+          kind: ClusterIssuer
+          name: internal-ca
+    allowedRecipients: '@example\.com$'
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+networkPolicy:
+  enabled: true
+  allowSameNamespace: false
+  httpFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+  smtpFrom:
+    - namespaceSelector:
+        matchLabels:
+          mailpit.example.com/smtp-client: "true"
+  metricsFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring

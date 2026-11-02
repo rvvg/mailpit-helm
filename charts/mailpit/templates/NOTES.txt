@@ -1,0 +1,22 @@
+Mailpit {{ include "mailpit.imageTag" . }} is installed.
+
+SMTP (in-cluster): {{ include "mailpit.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.smtpPort }}
+API  (in-cluster): {{ .Values.mailpit.ui.tls.enabled | ternary "https" "http" }}://{{ include "mailpit.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.httpPort }}{{ include "mailpit.webroot" . }}api/v1/
+{{- if .Values.ingress.enabled }}
+Web UI:            {{ range .Values.ingress.hosts }}{{ if $.Values.ingress.tls }}https{{ else }}http{{ end }}://{{ .host }}{{ include "mailpit.webroot" $ }} {{ end }}
+{{- else if .Values.httpRoute.enabled }}
+Web UI:            {{ range .Values.httpRoute.hostnames }}https://{{ . }}{{ include "mailpit.webroot" $ }} {{ end }}
+{{- else }}
+Web UI:            kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "mailpit.fullname" . }} 8025:{{ .Values.service.httpPort }}
+                   then open http://localhost:8025{{ include "mailpit.webroot" . }}
+{{- end }}
+{{- if not .Values.persistence.enabled }}
+
+WARNING: persistence is disabled - messages are lost when the pod restarts.
+{{- end }}
+{{- if and (or .Values.ingress.enabled .Values.httpRoute.enabled) (not .Values.mailpit.ui.auth.enabled) (not .Values.ingress.oauth2Proxy.enabled) }}
+
+WARNING: the web UI is exposed without authentication. Enable mailpit.ui.auth or ingress.oauth2Proxy.
+{{- end }}
+
+Run `helm test {{ .Release.Name }} -n {{ .Release.Namespace }}` to verify the installation.

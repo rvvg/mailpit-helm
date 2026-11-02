@@ -1,0 +1,6 @@
+mailpit:
+  webroot: /mail
+  ui:
+    allowedHosts: [mail.example.com]
+networkPolicy:
+  enabled: true

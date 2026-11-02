@@ -1,0 +1,7 @@
+mailpit:
+  smtp:
+    auth:
+      acceptAny: true
+    tls:
+      enabled: true
+      selfSigned: true

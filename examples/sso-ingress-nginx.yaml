@@ -1,0 +1,38 @@
+# Web UI behind ingress-nginx + oauth2-proxy SSO, restricted to an IdP group.
+# helm install mailpit oci://ghcr.io/rvvg/charts/mailpit -n mailpit --create-namespace -f sso-ingress-nginx.yaml
+persistence:
+  enabled: true
+  size: 10Gi
+mailpit:
+  maxMessages: 20000
+  maxAge: 14d
+  smtp:
+    auth:
+      acceptAny: true        # apps that always send AUTH keep working
+      allowInsecure: true
+  ui:
+    allowedHosts: [mailpit.example.com]
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"   # live-update websocket
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  hosts:
+    - host: mailpit.example.com
+  tls:
+    - secretName: mailpit-tls
+      hosts: [mailpit.example.com]
+  oauth2Proxy:
+    enabled: true
+    url: https://oauth2-proxy.example.com
+    allowedGroups: [mailpit-users]
+networkPolicy:
+  enabled: true
+  httpFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+  smtpFrom:
+    - namespaceSelector: {}   # any namespace may send mail

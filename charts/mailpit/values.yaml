@@ -1,0 +1,343 @@
+# Default values for mailpit.
+# Every setting is documented in README.md (Parameters section).
+
+image:
+  # -- Image registry
+  registry: docker.io
+  # -- Image repository
+  repository: axllent/mailpit
+  # -- Image tag. Defaults to the chart `appVersion`
+  tag: ""
+  # -- Image digest (`sha256:...`). When set it takes precedence over the tag
+  digest: ""
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+
+# -- Image pull secrets, e.g. `[{name: regcred}]`
+imagePullSecrets: []
+
+# -- Override the chart name
+nameOverride: ""
+# -- Override the full resource names
+fullnameOverride: ""
+# -- Labels added to every resource
+commonLabels: {}
+
+serviceAccount:
+  # -- Create a dedicated ServiceAccount (Mailpit never talks to the Kubernetes API)
+  create: true
+  # -- ServiceAccount name. Generated from the fullname when empty
+  name: ""
+  # -- ServiceAccount annotations
+  annotations: {}
+  # -- Mount the ServiceAccount token. Mailpit does not need it
+  automountServiceAccountToken: false
+
+## Mailpit application settings.
+## All runtime options: https://mailpit.axllent.org/docs/configuration/runtime-options/
+mailpit:
+  # -- Instance label shown in the web UI, SMTP and POP3 greetings (`MP_LABEL`)
+  label: ""
+  # -- Base path of the web UI and API (`MP_WEBROOT`), e.g. `/mailpit/`
+  webroot: /
+  # -- Container time zone (`TZ`)
+  timezone: UTC
+  # -- Max number of stored messages, oldest are pruned; `0` = unlimited (`MP_MAX_MESSAGES`)
+  maxMessages: 500
+  # -- Max message age, e.g. `36h` or `14d`; empty = unlimited (`MP_MAX_AGE`)
+  maxAge: ""
+  # -- Max accepted message size in MB; empty = Mailpit default 50 (`MP_MAX_MESSAGE_SIZE`)
+  maxMessageSize: ""
+  # -- Disable the periodic GitHub release check - no outbound calls (`MP_DISABLE_VERSION_CHECK`)
+  disableVersionCheck: true
+
+  ui:
+    auth:
+      # -- Protect the web UI and API with HTTP basic auth (`MP_UI_AUTH_FILE`)
+      enabled: false
+      # -- htpasswd content (`user:bcrypt-hash` lines). Ignored when `existingSecret` is set
+      htpasswd: ""
+      # -- Existing secret with the htpasswd file
+      existingSecret: ""
+      # -- Key in the secret that holds the htpasswd file
+      existingSecretKey: ui.htpasswd
+    tls:
+      # -- Serve the web UI over HTTPS (`MP_UI_TLS_CERT`/`MP_UI_TLS_KEY`). Usually TLS terminates on the ingress instead
+      enabled: false
+      # -- Secret of type `kubernetes.io/tls` with `tls.crt`/`tls.key`
+      secretName: ""
+    # -- Allow-list of `Host` headers to mitigate DNS rebinding (`MP_ALLOWED_HOSTS`).
+    # Ingress/HTTPRoute hostnames, the in-cluster service names and `localhost` are added automatically when non-empty
+    allowedHosts: []
+    # -- Hosts allowed to make cross-origin API requests (`MP_API_CORS`)
+    apiCors: ""
+    # -- Block remote CSS and fonts in rendered messages via CSP (`MP_BLOCK_REMOTE_CSS_AND_FONTS`)
+    blockRemoteCssAndFonts: false
+    # -- Hide the "Delete all" button in the web UI (`MP_HIDE_DELETE_ALL_BUTTON`)
+    hideDeleteAllButton: false
+
+  sendApi:
+    auth:
+      # -- Separate basic auth for the Send API `/api/v1/send` (`MP_SEND_API_AUTH_FILE`)
+      enabled: false
+      # -- htpasswd content. Ignored when `existingSecret` is set
+      htpasswd: ""
+      # -- Existing secret with the htpasswd file
+      existingSecret: ""
+      # -- Key in the secret that holds the htpasswd file
+      existingSecretKey: send-api.htpasswd
+      # -- Accept any credentials (or none) for the Send API (`MP_SEND_API_AUTH_ACCEPT_ANY`). Mutually exclusive with `enabled`
+      acceptAny: false
+
+  smtp:
+    auth:
+      # -- Require SMTP authentication from a password file (`MP_SMTP_AUTH_FILE`)
+      enabled: false
+      # -- htpasswd content. Ignored when `existingSecret` is set
+      htpasswd: ""
+      # -- Existing secret with the htpasswd file
+      existingSecret: ""
+      # -- Key in the secret that holds the htpasswd file
+      existingSecretKey: smtp.htpasswd
+      # -- Accept any SMTP credentials, or none (`MP_SMTP_AUTH_ACCEPT_ANY`). Handy for apps that always send AUTH
+      acceptAny: false
+      # -- Allow PLAIN/LOGIN auth without TLS (`MP_SMTP_AUTH_ALLOW_INSECURE`)
+      allowInsecure: false
+    tls:
+      # -- Enable STARTTLS on the SMTP server (`MP_SMTP_TLS_CERT`/`MP_SMTP_TLS_KEY`)
+      enabled: false
+      # -- Secret of type `kubernetes.io/tls`. Defaults to `<fullname>-smtp-tls` when `certManager.enabled`
+      secretName: ""
+      # -- Let Mailpit generate a self-signed certificate at startup for the service DNS names (`sans:`). No secret needed
+      selfSigned: false
+      # -- Reject commands until the client upgrades with STARTTLS (`MP_SMTP_REQUIRE_STARTTLS`)
+      requireStartTLS: false
+      # -- Implicit TLS for every connection, disables STARTTLS (`MP_SMTP_REQUIRE_TLS`)
+      requireTLS: false
+      certManager:
+        # -- Issue the SMTP certificate with a cert-manager `Certificate`
+        enabled: false
+        # -- Issuer reference, e.g. `{kind: ClusterIssuer, name: internal-ca}`
+        issuerRef: {}
+        # -- Extra DNS names (also used by `selfSigned`). In-cluster service names are always included
+        dnsNames: []
+        # -- Certificate duration
+        duration: 2160h
+        # -- Renew before expiry
+        renewBefore: 360h
+    # -- Regular expression recipients must match (`MP_SMTP_ALLOWED_RECIPIENTS`)
+    allowedRecipients: ""
+    # -- Max recipients per message; empty = Mailpit default 100 (`MP_SMTP_MAX_RECIPIENTS`)
+    maxRecipients: ""
+    # -- Disable reverse DNS lookups of SMTP clients - useless for pod IPs (`MP_SMTP_DISABLE_RDNS`)
+    disableRDNS: true
+
+  metrics:
+    # -- Expose Prometheus metrics on a dedicated port (`MP_ENABLE_PROMETHEUS`), not reachable via ingress
+    enabled: false
+    # -- Metrics port
+    port: 9090
+    serviceMonitor:
+      # -- Create a prometheus-operator ServiceMonitor
+      enabled: false
+      # -- Scrape interval
+      interval: 30s
+      # -- Scrape timeout
+      scrapeTimeout: 10s
+      # -- Extra labels, e.g. `release: kube-prometheus-stack`
+      labels: {}
+
+# -- Extra environment variables, e.g. any other `MP_*` option
+extraEnv: []
+#  - name: MP_WEBHOOK_URL
+#    value: https://hooks.example.com/mailpit
+
+# -- Extra `envFrom` sources (ConfigMaps/Secrets)
+extraEnvFrom: []
+# -- Extra container arguments
+extraArgs: []
+# -- Extra volumes
+extraVolumes: []
+# -- Extra volume mounts
+extraVolumeMounts: []
+
+## Mailpit stores messages in SQLite, so it always runs as a single-replica StatefulSet.
+persistence:
+  # -- Keep the database on a PersistentVolume. When disabled an `emptyDir` is used and messages are lost on restart
+  enabled: false
+  # -- Use an existing PVC instead of a volumeClaimTemplate
+  existingClaim: ""
+  # -- StorageClass; empty = cluster default
+  storageClassName: ""
+  # -- Access modes
+  accessModes:
+    - ReadWriteOnce
+  # -- Volume size
+  size: 1Gi
+  # -- PVC annotations
+  annotations: {}
+  # -- Keep or delete PVCs when the StatefulSet is deleted/scaled (Kubernetes >= 1.27)
+  retentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+
+service:
+  # -- Service type for web UI/API and SMTP
+  type: ClusterIP
+  # -- Web UI/API port
+  httpPort: 8025
+  # -- SMTP port
+  smtpPort: 1025
+  # -- Service annotations
+  annotations: {}
+
+## Separate SMTP-only Service, e.g. an internal LoadBalancer to receive mail from outside the cluster
+## without exposing the web UI.
+smtpService:
+  # -- Create a dedicated SMTP Service
+  enabled: false
+  # -- Service type
+  type: LoadBalancer
+  # -- Service annotations, e.g. `service.beta.kubernetes.io/aws-load-balancer-internal: "true"`
+  annotations: {}
+  # -- Restrict LoadBalancer clients
+  loadBalancerSourceRanges: []
+  # -- External traffic policy (`Local` preserves the client IP)
+  externalTrafficPolicy: ""
+
+ingress:
+  # -- Create an Ingress for the web UI/API
+  enabled: false
+  # -- IngressClass name
+  className: ""
+  # -- Ingress annotations
+  annotations: {}
+  # -- Hostnames
+  hosts:
+    - host: mailpit.example.com
+  # -- TLS configuration, e.g. `[{secretName: mailpit-tls, hosts: [mailpit.example.com]}]`
+  tls: []
+  # -- Path type
+  pathType: Prefix
+  ## ingress-nginx external authentication through oauth2-proxy (https://oauth2-proxy.github.io/oauth2-proxy/).
+  ## Renders auth-url / auth-signin / auth-response-headers annotations.
+  oauth2Proxy:
+    # -- Protect the ingress with oauth2-proxy (ingress-nginx only)
+    enabled: false
+    # -- oauth2-proxy base URL. Must be https: nginx `auth_request` does not follow redirects
+    url: https://oauth2-proxy.example.com
+    # -- Allow only these IdP groups (`?allowed_groups=`)
+    allowedGroups: []
+    # -- Allow only these emails (`?allowed_emails=`)
+    allowedEmails: []
+    # -- Headers passed from oauth2-proxy to Mailpit
+    responseHeaders: x-auth-request-user,x-auth-request-email,x-auth-request-groups
+    # -- Raise nginx proxy buffers: session cookies + auth headers overflow the 4k default
+    largeBuffers: true
+
+## Gateway API HTTPRoute (gateway.networking.k8s.io/v1)
+httpRoute:
+  # -- Create an HTTPRoute for the web UI/API
+  enabled: false
+  # -- HTTPRoute annotations
+  annotations: {}
+  # -- Gateways to attach to, e.g. `[{name: public, namespace: gateway}]`
+  parentRefs: []
+  # -- Hostnames
+  hostnames: []
+  # -- Extra filters
+  filters: []
+
+networkPolicy:
+  # -- Create a NetworkPolicy. Ingress is limited to the peers below, egress to DNS only
+  enabled: false
+  # -- Allow all pods of the release namespace to reach the web UI and SMTP
+  allowSameNamespace: true
+  # -- Peers allowed to reach the web UI/API, e.g. the ingress controller namespace
+  httpFrom: []
+  #  - namespaceSelector:
+  #      matchLabels:
+  #        kubernetes.io/metadata.name: ingress-nginx
+  # -- Peers allowed to send mail over SMTP
+  smtpFrom: []
+  # -- Peers allowed to scrape metrics
+  metricsFrom: []
+  egress:
+    # -- Restrict egress. Mailpit is a sink: no relay, link check, webhooks or version check unless allowed below
+    enabled: true
+    # -- Allow DNS to kube-dns/CoreDNS
+    allowDNS: true
+    # -- Extra egress rules, e.g. a webhook receiver or SpamAssassin
+    extra: []
+
+# -- Pod security context. Compliant with the `restricted` Pod Security Standard
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  privileged: false
+  capabilities:
+    drop:
+      - ALL
+
+# -- Resource requests/limits
+resources:
+  requests:
+    cpu: 10m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+livenessProbe:
+  # -- Enable the liveness probe (`/livez`)
+  enabled: true
+  initialDelaySeconds: 5
+  periodSeconds: 20
+  timeoutSeconds: 5
+  failureThreshold: 3
+readinessProbe:
+  # -- Enable the readiness probe (`/readyz`)
+  enabled: true
+  initialDelaySeconds: 2
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+startupProbe:
+  # -- Enable the startup probe - useful for large databases
+  enabled: false
+  periodSeconds: 5
+  failureThreshold: 30
+
+# -- StatefulSet update strategy
+updateStrategy:
+  type: RollingUpdate
+# -- Pod annotations
+podAnnotations: {}
+# -- Pod labels
+podLabels: {}
+# -- Priority class
+priorityClassName: ""
+# -- Grace period for in-flight SMTP sessions
+terminationGracePeriodSeconds: 30
+# -- Node selector
+nodeSelector: {}
+# -- Tolerations
+tolerations: []
+# -- Affinity
+affinity: {}
+# -- Topology spread constraints
+topologySpreadConstraints: []
+
+tests:
+  # -- Image used by `helm test`
+  image: docker.io/curlimages/curl:8.10.1

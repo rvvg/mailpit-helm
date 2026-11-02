@@ -1,0 +1,20 @@
+# Web UI through Gateway API, SMTP through an internal AWS NLB.
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: internal
+      namespace: gateway-system
+  hostnames: [mailpit.example.com]
+mailpit:
+  ui:
+    auth:
+      enabled: true
+      existingSecret: mailpit-ui-auth
+smtpService:
+  enabled: true
+  type: LoadBalancer
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internal
+    service.beta.kubernetes.io/aws-load-balancer-type: external
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+  loadBalancerSourceRanges: [10.0.0.0/8]

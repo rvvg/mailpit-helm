@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - charts/**
+
+permissions:
+  contents: write   # GitHub release + gh-pages index
+  packages: write   # ghcr.io OCI push
+  id-token: write   # cosign keyless signing
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
+
+      - name: Publish to GitHub Releases and GitHub Pages
+        uses: helm/chart-releaser-action@v1.7.0
+        with:
+          skip_existing: true
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CR_GENERATE_RELEASE_NOTES: true
+
+      - name: Publish artifacthub-repo.yml to GitHub Pages
+        run: |
+          git fetch origin gh-pages
+          git worktree add /tmp/gh-pages gh-pages
+          cp artifacthub-repo.yml /tmp/gh-pages/artifacthub-repo.yml
+          cd /tmp/gh-pages
+          git add artifacthub-repo.yml
+          git diff --cached --quiet || { git commit -m "Update artifacthub-repo.yml" && git push origin gh-pages; }
+
+      - uses: sigstore/cosign-installer@v3.8.1
+
+      - name: Push to ghcr.io and sign
+        env:
+          REGISTRY: ghcr.io/${{ github.repository_owner }}/charts
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for pkg in .cr-release-packages/*.tgz; do
+            [ -e "$pkg" ] || continue
+            out=$(helm push "$pkg" "oci://$REGISTRY" 2>&1) || { echo "$out"; exit 1; }
+            echo "$out"
+            digest=$(echo "$out" | awk '/^Digest:/ {print $2}')
+            name=$(basename "$pkg" | sed -E 's/-[0-9]+\.[0-9]+\.[0-9]+.*\.tgz$//')
+            cosign sign --yes "$REGISTRY/$name@$digest"
+          done

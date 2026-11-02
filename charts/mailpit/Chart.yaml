@@ -1,0 +1,60 @@
+apiVersion: v2
+name: mailpit
+description: >-
+  Mailpit - email & SMTP testing tool with web UI and API. Secure-by-default,
+  dependency-free chart: restricted Pod Security, NetworkPolicy, oauth2-proxy
+  integration, SMTP/UI TLS, Prometheus metrics, Gateway API.
+type: application
+version: 1.0.0
+appVersion: "v1.33.0"
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/rvvg/mailpit-helm
+icon: https://raw.githubusercontent.com/axllent/mailpit/develop/server/ui/mailpit.svg
+sources:
+  - https://github.com/rvvg/mailpit-helm
+  - https://github.com/axllent/mailpit
+keywords:
+  - mailpit
+  - email
+  - smtp
+  - mail
+  - testing
+  - mailhog
+  - devtools
+maintainers:
+  - name: rvvg
+    url: https://github.com/rvvg
+annotations:
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/category: monitoring-logging
+  artifacthub.io/operator: "false"
+  artifacthub.io/prerelease: "false"
+  artifacthub.io/containsSecurityUpdates: "false"
+  artifacthub.io/images: |
+    - name: mailpit
+      image: docker.io/axllent/mailpit:v1.33.0
+      platforms:
+        - linux/amd64
+        - linux/arm64
+  artifacthub.io/links: |
+    - name: Mailpit documentation
+      url: https://mailpit.axllent.org/docs/
+    - name: Mailpit source
+      url: https://github.com/axllent/mailpit
+    - name: Chart source
+      url: https://github.com/rvvg/mailpit-helm
+  artifacthub.io/changes: |
+    - kind: added
+      description: Initial public release
+    - kind: added
+      description: NetworkPolicy with default-deny egress (DNS only)
+    - kind: added
+      description: oauth2-proxy external auth helper for ingress-nginx
+    - kind: added
+      description: SMTP STARTTLS/TLS with existing secret or cert-manager Certificate
+    - kind: added
+      description: Prometheus metrics on a dedicated port and ServiceMonitor
+    - kind: added
+      description: Gateway API HTTPRoute
+    - kind: added
+      description: values.schema.json validation

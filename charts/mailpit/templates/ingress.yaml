@@ -1,0 +1,52 @@
+{{- if .Values.ingress.enabled }}
+{{- $ann := dict }}
+{{- with .Values.ingress.oauth2Proxy }}
+{{- if .enabled }}
+{{- $q := list }}
+{{- with .allowedGroups }}{{ $q = append $q (printf "allowed_groups=%s" (join "," .)) }}{{ end }}
+{{- with .allowedEmails }}{{ $q = append $q (printf "allowed_emails=%s" (join "," .)) }}{{ end }}
+{{- $base := trimSuffix "/" .url }}
+{{- $authUrl := printf "%s/oauth2/auth" $base }}
+{{- if $q }}{{ $authUrl = printf "%s?%s" $authUrl (join "&" $q) }}{{ end }}
+{{- $_ := set $ann "nginx.ingress.kubernetes.io/auth-url" $authUrl }}
+{{- $_ := set $ann "nginx.ingress.kubernetes.io/auth-signin" (printf "%s/oauth2/start?rd=$scheme://$host$escaped_request_uri" $base) }}
+{{- with .responseHeaders }}{{ $_ := set $ann "nginx.ingress.kubernetes.io/auth-response-headers" . }}{{ end }}
+{{- if .largeBuffers }}
+{{- $_ := set $ann "nginx.ingress.kubernetes.io/proxy-buffer-size" "32k" }}
+{{- $_ := set $ann "nginx.ingress.kubernetes.io/proxy-buffers-number" "4" }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if .Values.mailpit.ui.tls.enabled }}
+{{- $_ := set $ann "nginx.ingress.kubernetes.io/backend-protocol" "HTTPS" }}
+{{- end }}
+{{- $ann = merge (deepCopy (.Values.ingress.annotations | default dict)) $ann }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "mailpit.fullname" . }}
+  labels: {{- include "mailpit.labels" . | nindent 4 }}
+  {{- with $ann }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          - path: {{ include "mailpit.webroot" $ }}
+            pathType: {{ $.Values.ingress.pathType }}
+            backend:
+              service:
+                name: {{ include "mailpit.fullname" $ }}
+                port:
+                  name: http
+    {{- end }}
+{{- end }}
