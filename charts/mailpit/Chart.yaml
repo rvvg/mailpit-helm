@@ -5,8 +5,8 @@ description: >-
   dependency-free chart covering every Mailpit option: restricted Pod Security,
   NetworkPolicy, oauth2-proxy SSO, SMTP/UI/POP3 TLS, relay, Prometheus, Gateway API.
 type: application
-version: 1.0.2
-appVersion: "v1.33.0"
+version: 1.0.3
+appVersion: "v1.33.1"
 kubeVersion: ">=1.25.0-0"
 home: https://github.com/rvvg/mailpit-helm
 icon: https://raw.githubusercontent.com/axllent/mailpit/develop/server/ui/mailpit.svg
@@ -33,7 +33,7 @@ annotations:
   artifacthub.io/containsSecurityUpdates: "false"
   artifacthub.io/images: |
     - name: mailpit
-      image: docker.io/axllent/mailpit:v1.33.0
+      image: docker.io/axllent/mailpit:v1.33.1
       platforms:
         - linux/amd64
         - linux/arm64
@@ -46,4 +46,7 @@ annotations:
       url: https://github.com/rvvg/mailpit-helm
   artifacthub.io/changes: |
     - kind: changed
-      description: Artifact Hub category set to integration-delivery (was monitoring-logging)
+      description: Mailpit v1.33.1 (bug fixes, limits on remote stylesheets fetched by HTML check)
+      links:
+        - name: Mailpit v1.33.1 release notes
+          url: https://github.com/axllent/mailpit/releases/tag/v1.33.1
